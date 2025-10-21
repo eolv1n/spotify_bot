@@ -95,20 +95,24 @@ def generate_keyboard(track, artist, spotify_url):
     query_encoded = quote(f"{track} {artist}")
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="Слушать на Spotify", url=spotify_url)],
             [
-                InlineKeyboardButton(text="ВКонтакте", url="https://vk.com/audio"),
-                InlineKeyboardButton(text="Яндекс.Музыка", url=f"https://music.yandex.ru/search?text={query_encoded}"),
+                InlineKeyboardButton(text="🎧 Spotify", url=spotify_url)
             ],
             [
-                InlineKeyboardButton(text="SoundCloud", url=f"https://soundcloud.com/search?q={query_encoded}"),
-                InlineKeyboardButton(text="Apple Music", url=f"https://music.apple.com/search?term={query_encoded}"),
+                InlineKeyboardButton(text="🎵 ВКонтакте", url="https://vk.com/audio"),
+                InlineKeyboardButton(text="🎶 Яндекс.Музыка", url=f"https://music.yandex.ru/search?text={query_encoded}"),
             ],
             [
-                InlineKeyboardButton(text="YouTube", url=f"https://www.youtube.com/results?search_query={query_encoded}")
+                InlineKeyboardButton(text="☁️ SoundCloud", url=f"https://soundcloud.com/search?q={query_encoded}"),
+                InlineKeyboardButton(text="🍎 Apple Music", url=f"https://music.apple.com/search?term={query_encoded}"),
+            ],
+            [
+                InlineKeyboardButton(text="▶️ YouTube", url=f"https://www.youtube.com/results?search_query={query_encoded}"),
+                InlineKeyboardButton(text="🎵 YouTube Music", url=f"https://music.youtube.com/search?q={query_encoded}")
             ]
         ]
     )
+
 
 # === Обработка сообщений со ссылками ===
 @dp.message()
