@@ -25,6 +25,24 @@ load_dotenv()
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 SPOTIFY_CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID")
 SPOTIFY_CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
+AUTO_DELETE_DELAY_RAW = os.getenv("AUTO_DELETE_DELAY", "0")
+
+try:
+    AUTO_DELETE_DELAY = int(AUTO_DELETE_DELAY_RAW)
+    if AUTO_DELETE_DELAY < 0:
+        raise ValueError
+except (TypeError, ValueError):
+    logging.warning(
+        "Некорректное значение AUTO_DELETE_DELAY='%s'. Автоудаление отключено.",
+        AUTO_DELETE_DELAY_RAW,
+    )
+    AUTO_DELETE_DELAY = 0
+else:
+    if AUTO_DELETE_DELAY > 0:
+        logging.info(
+            "Автоудаление сообщений активировано. Задержка: %s секунд.",
+            AUTO_DELETE_DELAY,
+        )
 
 if not TELEGRAM_TOKEN or not SPOTIFY_CLIENT_ID or not SPOTIFY_CLIENT_SECRET:
     raise ValueError("❌ Не найдены необходимые переменные окружения! Проверь .env файл.")
@@ -114,6 +132,24 @@ def generate_keyboard(track, artist, spotify_url):
     )
 
 
+def should_auto_delete(chat: types.Chat) -> bool:
+    return AUTO_DELETE_DELAY > 0 and chat.type in {"group", "supergroup"}
+
+
+async def auto_delete_messages(delay: int, messages: list[types.Message]):
+    await asyncio.sleep(delay)
+    for msg in messages:
+        try:
+            await msg.delete()
+        except Exception as e:
+            logging.error(
+                "Не удалось удалить сообщение %s в чате %s: %s",
+                msg.message_id,
+                msg.chat.id,
+                e,
+            )
+
+
 # === Обработка сообщений со ссылками ===
 @dp.message()
 async def handle_spotify_link(message: types.Message):
@@ -148,10 +184,25 @@ async def handle_spotify_link(message: types.Message):
     caption = f"`{artist} — {track}`\n***{album}***"
     keyboard = generate_keyboard(track, artist, url)
 
+    reply_message = None
     if image_url:
-        await message.reply_photo(photo=image_url, caption=caption, parse_mode="Markdown", reply_markup=keyboard)
+        reply_message = await message.reply_photo(
+            photo=image_url,
+            caption=caption,
+            parse_mode="Markdown",
+            reply_markup=keyboard,
+        )
     else:
-        await message.reply(caption, parse_mode="Markdown", reply_markup=keyboard)
+        reply_message = await message.reply(
+            caption,
+            parse_mode="Markdown",
+            reply_markup=keyboard,
+        )
+
+    if should_auto_delete(message.chat) and reply_message:
+        asyncio.create_task(
+            auto_delete_messages(AUTO_DELETE_DELAY, [message, reply_message])
+        )
 
 # === Inline-режим ===
 @dp.inline_query()
