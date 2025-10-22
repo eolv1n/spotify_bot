@@ -26,12 +26,55 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 SPOTIFY_CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID")
 SPOTIFY_CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
 
+
+def _get_auto_delete_delay() -> int:
+    value = os.getenv("AUTO_DELETE_DELAY")
+    if not value:
+        return 0
+    try:
+        delay = int(value)
+        if delay < 0:
+            raise ValueError
+        return delay
+    except ValueError:
+        logging.warning(
+            "Некорректное значение AUTO_DELETE_DELAY=%s — автоудаление отключено.",
+            value,
+        )
+        return 0
+
+
+AUTO_DELETE_DELAY = _get_auto_delete_delay()
+
+if AUTO_DELETE_DELAY:
+    logging.info(
+        "Автоудаление сообщений в группах включено (через %s секунд)",
+        AUTO_DELETE_DELAY,
+    )
+
 if not TELEGRAM_TOKEN or not SPOTIFY_CLIENT_ID or not SPOTIFY_CLIENT_SECRET:
     raise ValueError("❌ Не найдены необходимые переменные окружения! Проверь .env файл.")
 
 # === Создаем бота и диспетчер ===
 bot = Bot(token=TELEGRAM_TOKEN)
 dp = Dispatcher()
+
+
+def should_auto_delete(chat: types.Chat) -> bool:
+    return AUTO_DELETE_DELAY > 0 and chat and chat.type in {"group", "supergroup"}
+
+
+async def delete_message_later(chat_id: int, message_id: int):
+    await asyncio.sleep(AUTO_DELETE_DELAY)
+    try:
+        await bot.delete_message(chat_id, message_id)
+    except Exception as e:
+        logging.warning(
+            "Не удалось удалить сообщение %s в чате %s: %s",
+            message_id,
+            chat_id,
+            e,
+        )
 
 # === /help ===
 @dp.message(Command("help"))
@@ -149,9 +192,22 @@ async def handle_spotify_link(message: types.Message):
     keyboard = generate_keyboard(track, artist, url)
 
     if image_url:
-        await message.reply_photo(photo=image_url, caption=caption, parse_mode="Markdown", reply_markup=keyboard)
+        sent_message = await message.reply_photo(
+            photo=image_url,
+            caption=caption,
+            parse_mode="Markdown",
+            reply_markup=keyboard,
+        )
     else:
-        await message.reply(caption, parse_mode="Markdown", reply_markup=keyboard)
+        sent_message = await message.reply(
+            caption,
+            parse_mode="Markdown",
+            reply_markup=keyboard,
+        )
+
+    if should_auto_delete(message.chat):
+        asyncio.create_task(delete_message_later(message.chat.id, message.message_id))
+        asyncio.create_task(delete_message_later(sent_message.chat.id, sent_message.message_id))
 
 # === Inline-режим ===
 @dp.inline_query()
