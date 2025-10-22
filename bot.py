@@ -18,13 +18,31 @@ from dotenv import load_dotenv
 # === Настройка логов ===
 logging.basicConfig(level=logging.INFO)
 
-# === Загрузка переменных окружения ===
+# === Загрузка .env ===
 load_dotenv()
 
-# === Настройки ===
+# === Настройки окружения ===
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 SPOTIFY_CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID")
 SPOTIFY_CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
+AUTO_DELETE_DELAY_RAW = os.getenv("AUTO_DELETE_DELAY", "0")
+
+try:
+    AUTO_DELETE_DELAY = int(AUTO_DELETE_DELAY_RAW)
+    if AUTO_DELETE_DELAY < 0:
+        raise ValueError
+except (TypeError, ValueError):
+    logging.warning(
+        "Некорректное значение AUTO_DELETE_DELAY='%s'. Автоудаление отключено.",
+        AUTO_DELETE_DELAY_RAW,
+    )
+    AUTO_DELETE_DELAY = 0
+else:
+    if AUTO_DELETE_DELAY > 0:
+        logging.info(
+            "🕒 Автоудаление сообщений включено. Задержка: %s секунд.",
+            AUTO_DELETE_DELAY,
+        )
 
 if not TELEGRAM_TOKEN or not SPOTIFY_CLIENT_ID or not SPOTIFY_CLIENT_SECRET:
     raise ValueError("❌ Не найдены необходимые переменные окружения! Проверь .env файл.")
@@ -49,7 +67,7 @@ async def send_help(message: types.Message):
     )
     await message.answer(text, parse_mode="HTML")
 
-# === Получаем токен Spotify ===
+# === Spotify Auth ===
 async def get_spotify_token():
     url = "https://accounts.spotify.com/api/token"
     data = {"grant_type": "client_credentials"}
@@ -60,12 +78,12 @@ async def get_spotify_token():
             token_data = await resp.json()
             return token_data.get("access_token")
 
-# === Извлекаем ID трека из ссылки ===
+# === Извлекаем ID трека ===
 def extract_track_id(spotify_url: str):
     match = re.search(r"track/([A-Za-z0-9]+)", spotify_url)
     return match.group(1) if match else None
 
-# === Раскрываем короткие ссылки Spotify ===
+# === Раскрываем короткие ссылки ===
 async def resolve_spotify_link(short_url: str) -> str:
     async with aiohttp.ClientSession() as session:
         try:
@@ -90,14 +108,12 @@ async def get_track_info(track_id: str):
             image_url = data["album"]["images"][0]["url"] if data["album"]["images"] else None
             return {"artist": artist_names, "track": track_name, "album": album_name, "image": image_url}
 
-# === Генерация клавиатуры со ссылками ===
+# === Генерация клавиатуры ===
 def generate_keyboard(track, artist, spotify_url):
     query_encoded = quote(f"{track} {artist}")
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [
-                InlineKeyboardButton(text="🎧 Spotify", url=spotify_url)
-            ],
+            [InlineKeyboardButton(text="🎧 Spotify", url=spotify_url)],
             [
                 InlineKeyboardButton(text="🎵 ВКонтакте", url="https://vk.com/audio"),
                 InlineKeyboardButton(text="🎶 Яндекс.Музыка", url=f"https://music.yandex.ru/search?text={query_encoded}"),
@@ -113,6 +129,17 @@ def generate_keyboard(track, artist, spotify_url):
         ]
     )
 
+# === Автоудаление сообщений ===
+def should_auto_delete(chat: types.Chat) -> bool:
+    return AUTO_DELETE_DELAY > 0 and chat.type in {"group", "supergroup"}
+
+async def auto_delete_messages(delay: int, messages: list[types.Message]):
+    await asyncio.sleep(delay)
+    for msg in messages:
+        try:
+            await msg.delete()
+        except Exception as e:
+            logging.warning(f"Не удалось удалить сообщение {msg.message_id}: {e}")
 
 # === Обработка сообщений со ссылками ===
 @dp.message()
@@ -121,6 +148,7 @@ async def handle_spotify_link(message: types.Message):
         return
 
     url = message.text.strip()
+
     if "spotify.link/" in url:
         url = await resolve_spotify_link(url)
         if not url:
@@ -148,10 +176,23 @@ async def handle_spotify_link(message: types.Message):
     caption = f"`{artist} — {track}`\n***{album}***"
     keyboard = generate_keyboard(track, artist, url)
 
+    reply_message = None
     if image_url:
-        await message.reply_photo(photo=image_url, caption=caption, parse_mode="Markdown", reply_markup=keyboard)
+        reply_message = await message.reply_photo(
+            photo=image_url,
+            caption=caption,
+            parse_mode="Markdown",
+            reply_markup=keyboard,
+        )
     else:
-        await message.reply(caption, parse_mode="Markdown", reply_markup=keyboard)
+        reply_message = await message.reply(
+            caption,
+            parse_mode="Markdown",
+            reply_markup=keyboard,
+        )
+
+    if should_auto_delete(message.chat) and reply_message:
+        asyncio.create_task(auto_delete_messages(AUTO_DELETE_DELAY, [message, reply_message]))
 
 # === Inline-режим ===
 @dp.inline_query()
@@ -201,7 +242,8 @@ async def inline_handler(query: InlineQuery):
 # === Событие запуска ===
 async def on_startup():
     logging.info("✅ Бот запущен и готов к работе (включая inline-режим)")
-    dp.startup.register(on_startup)
+
+dp.startup.register(on_startup)
 
 # === Запуск ===
 async def main():
