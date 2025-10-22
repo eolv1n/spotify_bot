@@ -57,13 +57,16 @@ dp = Dispatcher()
 async def send_help(message: types.Message):
     text = (
         "🎧 <b>Spotify Info Bot</b>\n\n"
-        "Я помогу получить информацию о треках Spotify.\n\n"
+        "Я помогу узнать информацию о треках Spotify и найти их в других музыкальных сервисах.\n\n"
         "📌 <b>Что я умею:</b>\n"
-        "• Отправь ссылку на трек Spotify — я покажу название, исполнителя и обложку.\n"
-        "• Работаю в группах и в личке.\n"
-        "• Можно вызвать в inline-режиме: напиши <code>@имя_бота</code> и начни вводить название трека.\n\n"
-        "Пример:\n"
-        "<code>https://open.spotify.com/track/xxxxxxxx</code>"
+        "• Отправь ссылку на трек Spotify — я покажу исполнителя, название и альбом.\n"
+        "• Работаю в личных сообщениях и в групповых чатах.\n"
+        "• Можно использовать в inline-режиме — просто напиши <code>@имя_бота</code> и вставь ссылку на трек.\n"
+        "• Поддерживаются ссылки на Spotify и короткие ссылки <code>spotify.link</code>.\n\n"
+        "🎵 В карточке трека ты найдёшь кнопки для перехода на Spotify, YouTube Music, Apple Music, "
+        "Яндекс.Музыку, SoundCloud и ВКонтакте.\n\n"
+        "📖 <b>Пример:</b>\n"
+        "<code>https://open.spotify.com/track/xxxxxxxxxxxxxxxx</code>"
     )
     await message.answer(text, parse_mode="HTML")
 
@@ -176,22 +179,24 @@ async def handle_spotify_link(message: types.Message):
     caption = f"`{artist} — {track}`\n***{album}***"
     keyboard = generate_keyboard(track, artist, url)
 
-    reply_message = None
+    sent_message = None
     if image_url:
-        reply_message = await message.reply_photo(
+        sent_message = await bot.send_photo(
+            chat_id=message.chat.id,
             photo=image_url,
             caption=caption,
             parse_mode="Markdown",
             reply_markup=keyboard,
         )
     else:
-        reply_message = await message.reply(
-            caption,
+        sent_message = await bot.send_message(
+            chat_id=message.chat.id,
+            text=caption,
             parse_mode="Markdown",
             reply_markup=keyboard,
         )
 
-    if should_auto_delete(message.chat) and reply_message:
+    if should_auto_delete(message.chat) and sent_message:
         asyncio.create_task(auto_delete_messages(AUTO_DELETE_DELAY, [message]))
 
 # === Inline-режим ===
