@@ -192,7 +192,7 @@ async def handle_spotify_link(message: types.Message):
         )
 
     if should_auto_delete(message.chat) and reply_message:
-        asyncio.create_task(auto_delete_messages(AUTO_DELETE_DELAY, [message, reply_message]))
+        asyncio.create_task(auto_delete_messages(AUTO_DELETE_DELAY, [message]))
 
 # === Inline-режим ===
 @dp.inline_query()
