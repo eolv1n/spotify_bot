@@ -111,6 +111,27 @@ async def get_track_info(track_id: str):
             image_url = data["album"]["images"][0]["url"] if data["album"]["images"] else None
             return {"artist": artist_names, "track": track_name, "album": album_name, "image": image_url}
 
+# === Поиск треков по названию ===
+async def search_spotify_tracks(query: str):
+    token = await get_spotify_token()
+    if not token:
+        logging.warning("Не удалось получить Spotify token для поиска")
+        return []
+
+    headers = {"Authorization": f"Bearer {token}"}
+    params = {"q": query, "type": "track", "limit": 5}
+
+    async with aiohttp.ClientSession() as session:
+        async with session.get(
+            "https://api.spotify.com/v1/search", headers=headers, params=params
+        ) as resp:
+            if resp.status != 200:
+                txt = await resp.text()
+                logging.warning(f"Spotify search error: {resp.status} {txt}")
+                return []
+            data = await resp.json()
+            return data.get("tracks", {}).get("items", []) or []
+
 # === Генерация клавиатуры ===
 def generate_keyboard(track, artist, spotify_url):
     query_encoded = quote(f"{track} {artist}")
@@ -206,43 +227,78 @@ async def inline_handler(query: InlineQuery):
     if not text:
         return
 
-    if "spotify.link/" in text:
-        text = await resolve_spotify_link(text)
-        if not text:
+    results: list[InlineQueryResultArticle] = []
+
+    # 🔗 Если пользователь дал ссылку — работаем по старой логике
+    if "spotify.link/" in text or "open.spotify.com/track/" in text:
+        if "spotify.link/" in text:
+            text = await resolve_spotify_link(text)
+            if not text:
+                return
+
+        track_id = extract_track_id(text)
+        if not track_id:
             return
 
-    if "open.spotify.com/track/" not in text:
-        return
+        track_info = await get_track_info(track_id)
+        if not track_info:
+            return
 
-    track_id = extract_track_id(text)
-    if not track_id:
-        return
+        artist = track_info["artist"]
+        track = track_info["track"]
+        album = track_info["album"]
+        image_url = track_info["image"]
+        keyboard = generate_keyboard(track, artist, text)
 
-    track_info = await get_track_info(track_id)
-    if not track_info:
-        return
+        caption = f"`{artist} — {track}`\n***{album}***"
+        results.append(
+            InlineQueryResultArticle(
+                id=track_id,
+                title=f"{artist} — {track}",
+                description=album,
+                thumb_url=image_url,
+                input_message_content=InputTextMessageContent(
+                    message_text=caption, parse_mode="Markdown"
+                ),
+                reply_markup=keyboard,
+            )
+        )
 
-    artist = track_info["artist"]
-    track = track_info["track"]
-    album = track_info["album"]
-    image_url = track_info["image"]
+    else:
+        # 🔍 Новый режим: поиск по названию/артисту в Spotify
+        items = await search_spotify_tracks(text)
+        if not items:
+            # Пустой ответ — Telegram сам покажет "ничего не найдено"
+            await query.answer([], cache_time=1, is_personal=True)
+            return
 
-    caption = f"`{artist} — {track}`\n***{album}***"
-    keyboard = generate_keyboard(track, artist, text)
+        for item in items:
+            track_id = item.get("id")
+            track = item.get("name", "Unknown")
+            artist = ", ".join(a["name"] for a in item.get("artists", [])) or "Unknown"
+            album = item.get("album", {}).get("name", "")
+            images = item.get("album", {}).get("images", [])
+            image_url = images[0]["url"] if images else None
+            spotify_url = item.get("external_urls", {}).get("spotify", "")
 
-    result = InlineQueryResultArticle(
-        id=track_id,
-        title=f"{artist} — {track}",
-        description=album,
-        thumb_url=image_url,
-        input_message_content=InputTextMessageContent(
-            message_text=caption,
-            parse_mode="Markdown"
-        ),
-        reply_markup=keyboard
-    )
+            caption = f"`{artist} — {track}`\n***{album}***"
+            keyboard = generate_keyboard(track, artist, spotify_url)
 
-    await query.answer([result], cache_time=1, is_personal=True)
+            results.append(
+                InlineQueryResultArticle(
+                    id=track_id or f"{artist}-{track}",
+                    title=f"{artist} — {track}",
+                    description=album,
+                    thumb_url=image_url,
+                    input_message_content=InputTextMessageContent(
+                        message_text=caption, parse_mode="Markdown"
+                    ),
+                    reply_markup=keyboard,
+                )
+            )
+
+    await query.answer(results, cache_time=1, is_personal=True)
+
 
 # === Событие запуска ===
 async def on_startup():
