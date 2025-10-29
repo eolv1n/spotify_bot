@@ -1,0 +1,6 @@
+services:
+  spotify_bot:
+    build: .
+    container_name: spotify_bot
+    env_file: .env
+    restart: unless-stopped
