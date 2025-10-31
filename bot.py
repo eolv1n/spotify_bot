@@ -100,16 +100,37 @@ async def resolve_spotify_link(short_url: str) -> str:
 async def get_track_info(track_id: str):
     token = await get_spotify_token()
     headers = {"Authorization": f"Bearer {token}"}
+
     async with aiohttp.ClientSession() as session:
         async with session.get(f"https://api.spotify.com/v1/tracks/{track_id}", headers=headers) as resp:
             if resp.status != 200:
                 return None
             data = await resp.json()
+
             artist_names = ", ".join(artist["name"] for artist in data["artists"])
             track_name = data["name"]
-            album_name = data["album"]["name"]
-            image_url = data["album"]["images"][0]["url"] if data["album"]["images"] else None
-            return {"artist": artist_names, "track": track_name, "album": album_name, "image": image_url}
+            album_data = data["album"]
+            album_name = album_data["name"]
+            album_id = album_data["id"]
+            image_url = album_data["images"][0]["url"] if album_data.get("images") else None
+            release_date = album_data.get("release_date", "Unknown Date")
+
+        # Получаем лейбл
+        async with session.get(f"https://api.spotify.com/v1/albums/{album_id}", headers=headers) as album_resp:
+            if album_resp.status == 200:
+                album_json = await album_resp.json()
+                label = album_json.get("label", "Unknown Label")
+            else:
+                label = "Unknown Label"
+
+        return {
+            "artist": artist_names,
+            "track": track_name,
+            "album": album_name,
+            "image": image_url,
+            "label": label,
+            "release_date": release_date,
+        }
 
 # === Поиск треков по названию ===
 async def search_spotify_tracks(query: str):
@@ -196,11 +217,18 @@ async def handle_spotify_link(message: types.Message):
     track = track_info["track"]
     album = track_info["album"]
     image_url = track_info["image"]
+    label = track_info["label"]
+    release_date = track_info["release_date"]
 
-    caption = f"`{artist} — {track}`\n***{album}***"
+    caption = (
+        f"`{artist} — {track}`\n"
+        f"***{album}***\n\n"
+        f"Release date: {release_date}\n"
+        f"Label: {label}"
+    )
+
     keyboard = generate_keyboard(track, artist, url)
 
-    sent_message = None
     if image_url:
         sent_message = await bot.send_photo(
             chat_id=message.chat.id,
@@ -229,7 +257,6 @@ async def inline_handler(query: InlineQuery):
 
     results: list[InlineQueryResultArticle] = []
 
-    # 🔗 Если пользователь дал ссылку — работаем по старой логике
     if "spotify.link/" in text or "open.spotify.com/track/" in text:
         if "spotify.link/" in text:
             text = await resolve_spotify_link(text)
@@ -248,9 +275,17 @@ async def inline_handler(query: InlineQuery):
         track = track_info["track"]
         album = track_info["album"]
         image_url = track_info["image"]
-        keyboard = generate_keyboard(track, artist, text)
+        label = track_info["label"]
+        release_date = track_info["release_date"]
 
-        caption = f"`{artist} — {track}`\n***{album}***"
+        caption = (
+            f"`{artist} — {track}`\n"
+            f"***{album}***\n\n"
+            f"Release date: {release_date}\n"
+            f"Label: {label}"
+        )
+
+        keyboard = generate_keyboard(track, artist, text)
         results.append(
             InlineQueryResultArticle(
                 id=track_id,
@@ -263,12 +298,9 @@ async def inline_handler(query: InlineQuery):
                 reply_markup=keyboard,
             )
         )
-
     else:
-        # 🔍 Новый режим: поиск по названию/артисту в Spotify
         items = await search_spotify_tracks(text)
         if not items:
-            # Пустой ответ — Telegram сам покажет "ничего не найдено"
             await query.answer([], cache_time=1, is_personal=True)
             return
 
@@ -280,8 +312,16 @@ async def inline_handler(query: InlineQuery):
             images = item.get("album", {}).get("images", [])
             image_url = images[0]["url"] if images else None
             spotify_url = item.get("external_urls", {}).get("spotify", "")
+            label = item.get("album", {}).get("label", "Unknown Label")
+            release_date = item.get("album", {}).get("release_date", "Unknown Date")
 
-            caption = f"`{artist} — {track}`\n***{album}***"
+            caption = (
+                f"`{artist} — {track}`\n"
+                f"***{album}***\n\n"
+                f"Release date: {release_date}\n"
+                f"Label: {label}"
+            )
+
             keyboard = generate_keyboard(track, artist, spotify_url)
 
             results.append(
@@ -298,7 +338,6 @@ async def inline_handler(query: InlineQuery):
             )
 
     await query.answer(results, cache_time=1, is_personal=True)
-
 
 # === Событие запуска ===
 async def on_startup():
