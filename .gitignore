@@ -1,5 +1,38 @@
-# Ignore sensitive files
-.env
-*.log
+# Python
 __pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Env
+.env
 venv/
+.env.local
+.env.*.local
+
+# Logs
+*.log
+logs/
+*.sqlite3
+
+# VS Code / Editors
+.vscode/
+.idea/
+
+# Docker / Compose
+docker-compose.override.yml
+*.pid
+*.sock
+*.tar
+
+# Git / System
+.DS_Store
+Thumbs.db
+
+# Cache
+.cache/
+__pycache__/
+
+# Build artifacts
+dist/
+build/
