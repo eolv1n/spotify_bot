@@ -131,6 +131,43 @@ async def get_track_info(track_id: str):
             "label": label,
             "release_date": release_date,
         }
+    
+# === Получаем треки из плейлиста ===
+async def get_playlist_tracks(playlist_url: str):
+    match = re.search(r"playlist/([A-Za-z0-9]+)", playlist_url)
+    if not match:
+        return "❌ Не удалось распознать ссылку на плейлист."
+
+    playlist_id = match.group(1)
+    token = await get_spotify_token()
+    if not token:
+        return "⚠️ Не удалось получить токен Spotify."
+
+    headers = {"Authorization": f"Bearer {token}"}
+
+    async with aiohttp.ClientSession() as session:
+        async with session.get(
+            f"https://api.spotify.com/v1/playlists/{playlist_id}/tracks", headers=headers
+        ) as resp:
+            if resp.status != 200:
+                return f"❌ Ошибка при получении данных: {resp.status}"
+            data = await resp.json()
+
+    tracks = []
+    for i, item in enumerate(data.get("items", []), start=1):
+        track = item.get("track")
+        if not track:
+            continue
+        artist = ", ".join(a["name"] for a in track["artists"])
+        name = track["name"]
+        label = track.get("album", {}).get("label", "Unknown Label")
+        tracks.append(f"{i}. {artist} — {name} [{label}]")
+
+    if not tracks:
+        return "⚠️ В плейлисте нет треков или доступ ограничен."
+
+    playlist_text = "\n".join(tracks)
+    return f"📜 <b>Список треков из плейлиста:</b>\n\n{playlist_text}"
 
 # === Поиск треков по названию ===
 async def search_spotify_tracks(query: str):
@@ -185,6 +222,12 @@ async def auto_delete_messages(delay: int, messages: list[types.Message]):
             await msg.delete()
         except Exception as e:
             logging.warning(f"Не удалось удалить сообщение {msg.message_id}: {e}")
+# === Отправка длинного текста ===
+async def send_long_message(bot, chat_id, text, parse_mode="HTML"):
+    MAX_LENGTH = 4000
+    for i in range(0, len(text), MAX_LENGTH):
+        part = text[i:i + MAX_LENGTH]
+        await bot.send_message(chat_id, part, parse_mode=parse_mode)
 
 # === Обработка сообщений со ссылками ===
 @dp.message()
@@ -194,12 +237,20 @@ async def handle_spotify_link(message: types.Message):
 
     url = message.text.strip()
 
+    # === 1️⃣ Проверяем — это ссылка на плейлист? ===
+    if "spotify.com/playlist/" in url or "spotify.link/" in url:
+        reply_text = await get_playlist_tracks(url)
+        await send_long_message(bot, message.chat.id, reply_text, parse_mode="HTML")
+        return  # ⚠️ прекращаем выполнение, чтобы не обрабатывать как трек
+
+    # === 2️⃣ Раскрываем короткие ссылки ===
     if "spotify.link/" in url:
         url = await resolve_spotify_link(url)
         if not url:
             await message.reply("Не удалось раскрыть короткую ссылку 😕")
             return
 
+    # === 3️⃣ Проверяем, это трек ===
     if "open.spotify.com/track/" not in url:
         return
 
