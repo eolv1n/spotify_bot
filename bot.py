@@ -8,9 +8,6 @@ from aiogram import Bot, Dispatcher, types, F
 from aiogram.types import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
-    InlineQuery,
-    InlineQueryResultArticle,
-    InputTextMessageContent,
 )
 from aiogram.filters import Command
 from dotenv import load_dotenv
@@ -32,17 +29,11 @@ try:
     if AUTO_DELETE_DELAY < 0:
         raise ValueError
 except (TypeError, ValueError):
-    logging.warning(
-        "Некорректное значение AUTO_DELETE_DELAY='%s'. Автоудаление отключено.",
-        AUTO_DELETE_DELAY_RAW,
-    )
+    logging.warning("Некорректное значение AUTO_DELETE_DELAY='%s'. Автоудаление отключено.", AUTO_DELETE_DELAY_RAW)
     AUTO_DELETE_DELAY = 0
 else:
     if AUTO_DELETE_DELAY > 0:
-        logging.info(
-            "🕒 Автоудаление сообщений включено. Задержка: %s секунд.",
-            AUTO_DELETE_DELAY,
-        )
+        logging.info("🕒 Автоудаление сообщений включено. Задержка: %s секунд.", AUTO_DELETE_DELAY)
 
 if not TELEGRAM_TOKEN or not SPOTIFY_CLIENT_ID or not SPOTIFY_CLIENT_SECRET:
     raise ValueError("❌ Не найдены необходимые переменные окружения! Проверь .env файл.")
@@ -59,32 +50,31 @@ async def send_help(message: types.Message):
         "🎧 <b>Spotify Info Bot</b>\n\n"
         "Я помогу узнать информацию о треках Spotify и найти их в других музыкальных сервисах.\n\n"
         "📌 <b>Что я умею:</b>\n"
-        "• Отправь ссылку на трек Spotify — я покажу исполнителя, название и альбом.\n"
-        "• Работаю в личных сообщениях и в групповых чатах.\n"
-        "• Можно использовать в inline-режиме — просто напиши <code>@имя_бота</code> и вставь ссылку на трек.\n"
-        "• Поддерживаются ссылки на Spotify и короткие ссылки <code>spotify.link</code>.\n\n"
-        "🎵 В карточке трека ты найдёшь кнопки для перехода на Spotify, YouTube Music, Apple Music, "
-        "Яндекс.Музыку, SoundCloud и ВКонтакте.\n\n"
-        "📖 <b>Пример:</b>\n"
+        "• Отправь ссылку на трек или плейлист Spotify — я покажу подробности.\n"
+        "• Работаю в личных сообщениях и группах.\n"
+        "• Поддерживаю короткие ссылки <code>spotify.link</code>.\n\n"
+        "🎵 Inline режим: напиши <code>@имя_бота</code> и вставь ссылку на трек.\n\n"
+        "📖 Пример:\n"
         "<code>https://open.spotify.com/track/xxxxxxxxxxxxxxxx</code>"
     )
     await message.answer(text, parse_mode="HTML")
+
 
 # === Spotify Auth ===
 async def get_spotify_token():
     url = "https://accounts.spotify.com/api/token"
     data = {"grant_type": "client_credentials"}
     async with aiohttp.ClientSession() as session:
-        async with session.post(
-            url, data=data, auth=aiohttp.BasicAuth(SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET)
-        ) as resp:
+        async with session.post(url, data=data, auth=aiohttp.BasicAuth(SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET)) as resp:
             token_data = await resp.json()
             return token_data.get("access_token")
+
 
 # === Извлекаем ID трека ===
 def extract_track_id(spotify_url: str):
     match = re.search(r"track/([A-Za-z0-9]+)", spotify_url)
     return match.group(1) if match else None
+
 
 # === Раскрываем короткие ссылки ===
 async def resolve_spotify_link(short_url: str) -> str:
@@ -95,6 +85,7 @@ async def resolve_spotify_link(short_url: str) -> str:
         except Exception as e:
             logging.error(f"Ошибка раскрытия ссылки: {e}")
             return None
+
 
 # === Получаем информацию о треке ===
 async def get_track_info(track_id: str):
@@ -131,89 +122,99 @@ async def get_track_info(track_id: str):
             "label": label,
             "release_date": release_date,
         }
-    
-# === Получаем треки из плейлиста ===
+
+
+# === Получаем треки из плейлиста (с пагинацией и лейблами) ===
 async def get_playlist_tracks(playlist_url: str):
     match = re.search(r"playlist/([A-Za-z0-9]+)", playlist_url)
     if not match:
-        return "❌ Не удалось распознать ссылку на плейлист."
+        return ["❌ Не удалось распознать ссылку на плейлист."], playlist_url
 
     playlist_id = match.group(1)
     token = await get_spotify_token()
     if not token:
-        return "⚠️ Не удалось получить токен Spotify."
+        return ["⚠️ Не удалось получить токен Spotify."], playlist_url
 
     headers = {"Authorization": f"Bearer {token}"}
 
     async with aiohttp.ClientSession() as session:
-        async with session.get(
-            f"https://api.spotify.com/v1/playlists/{playlist_id}/tracks", headers=headers
-        ) as resp:
-            if resp.status != 200:
-                return f"❌ Ошибка при получении данных: {resp.status}"
-            data = await resp.json()
-
-    tracks = []
-    for i, item in enumerate(data.get("items", []), start=1):
-        track = item.get("track")
-        if not track:
-            continue
-        artist = ", ".join(a["name"] for a in track["artists"])
-        name = track["name"]
-        label = track.get("album", {}).get("label", "Unknown Label")
-        tracks.append(f"{i}. {artist} — {name} [{label}]")
-
-    if not tracks:
-        return "⚠️ В плейлисте нет треков или доступ ограничен."
-
-    playlist_text = "\n".join(tracks)
-    return f"📜 <b>Список треков из плейлиста:</b>\n\n{playlist_text}"
-
-# === Поиск треков по названию ===
-async def search_spotify_tracks(query: str):
-    token = await get_spotify_token()
-    if not token:
-        logging.warning("Не удалось получить Spotify token для поиска")
-        return []
-
-    headers = {"Authorization": f"Bearer {token}"}
-    params = {"q": query, "type": "track", "limit": 5}
-
-    async with aiohttp.ClientSession() as session:
-        async with session.get(
-            "https://api.spotify.com/v1/search", headers=headers, params=params
-        ) as resp:
+        # 🔹 Получаем основную информацию о плейлисте
+        async with session.get(f"https://api.spotify.com/v1/playlists/{playlist_id}", headers=headers) as resp:
             if resp.status != 200:
                 txt = await resp.text()
-                logging.warning(f"Spotify search error: {resp.status} {txt}")
-                return []
-            data = await resp.json()
-            return data.get("tracks", {}).get("items", []) or []
+                logging.error(f"Ошибка Spotify API ({resp.status}): {txt}")
+                return [f"❌ Ошибка при получении плейлиста: {resp.status}"], playlist_url
+            playlist_data = await resp.json()
 
-# === Генерация клавиатуры ===
-def generate_keyboard(track, artist, spotify_url):
-    query_encoded = quote(f"{track} {artist}")
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="🎧 Spotify", url=spotify_url)],
-            [
-                InlineKeyboardButton(text="🎵 ВКонтакте", url="https://vk.com/audio"),
-                InlineKeyboardButton(text="🎶 Яндекс.Музыка", url=f"https://music.yandex.ru/search?text={query_encoded}"),
-            ],
-            [
-                InlineKeyboardButton(text="☁️ SoundCloud", url=f"https://soundcloud.com/search?q={query_encoded}"),
-                InlineKeyboardButton(text="🍎 Apple Music", url=f"https://music.apple.com/search?term={query_encoded}"),
-            ],
-            [
-                InlineKeyboardButton(text="▶️ YouTube", url=f"https://www.youtube.com/results?search_query={query_encoded}"),
-                InlineKeyboardButton(text="🎵 YouTube Music", url=f"https://music.youtube.com/search?q={query_encoded}")
-            ]
-        ]
-    )
+        playlist_name = playlist_data.get("name", "Без названия")
+        playlist_owner = playlist_data.get("owner", {}).get("display_name", "Неизвестный автор")
+        playlist_url_full = playlist_data.get("external_urls", {}).get("spotify", playlist_url)
+
+        # 🔹 Загружаем все треки с пагинацией
+        limit = 100
+        offset = 0
+        all_tracks = []
+
+        while True:
+            url = f"https://api.spotify.com/v1/playlists/{playlist_id}/tracks?limit={limit}&offset={offset}"
+            async with session.get(url, headers=headers) as resp:
+                if resp.status != 200:
+                    logging.error(f"Ошибка при загрузке треков: {resp.status}")
+                    break
+                data = await resp.json()
+                items = data.get("items", [])
+                if not items:
+                    break
+                all_tracks.extend(items)
+                offset += limit
+                logging.info(f"📦 Загружено {len(all_tracks)} треков...")
+
+        if not all_tracks:
+            return ["⚠️ В плейлисте нет треков или доступ ограничен."], playlist_url_full
+
+        # 🔹 Извлекаем треки с лейблами
+        tracks = []
+        album_cache = {}
+
+        for i, item in enumerate(all_tracks, start=1):
+            track = item.get("track")
+            if not track:
+                continue
+
+            artist = ", ".join(a["name"] for a in track["artists"])
+            name = track["name"]
+            album_id = track.get("album", {}).get("id")
+
+            label = "Unknown Label"
+            if album_id:
+                if album_id in album_cache:
+                    label = album_cache[album_id]
+                else:
+                    try:
+                        async with session.get(f"https://api.spotify.com/v1/albums/{album_id}", headers=headers) as album_resp:
+                            if album_resp.status == 200:
+                                album_data = await album_resp.json()
+                                label = album_data.get("label", "Unknown Label")
+                                album_cache[album_id] = label
+                    except Exception as e:
+                        logging.error(f"Ошибка при получении альбома {album_id}: {e}")
+
+            tracks.append(f"{i}. {artist} — {name} [{label}]")
+            await asyncio.sleep(0.05)
+
+        header = f"📀 <b>{playlist_name}</b>\n👤 {playlist_owner}\n\n"
+        footer = f"\n\n💿 Всего треков: {len(tracks)}"
+        full_text = header + "\n".join(tracks) + footer
+
+        MAX_LENGTH = 4000
+        parts = [full_text[i:i + MAX_LENGTH] for i in range(0, len(full_text), MAX_LENGTH)]
+
+        return parts, playlist_url_full
 
 # === Автоудаление сообщений ===
 def should_auto_delete(chat: types.Chat) -> bool:
     return AUTO_DELETE_DELAY > 0 and chat.type in {"group", "supergroup"}
+
 
 async def auto_delete_messages(delay: int, messages: list[types.Message]):
     await asyncio.sleep(delay)
@@ -222,14 +223,9 @@ async def auto_delete_messages(delay: int, messages: list[types.Message]):
             await msg.delete()
         except Exception as e:
             logging.warning(f"Не удалось удалить сообщение {msg.message_id}: {e}")
-# === Отправка длинного текста ===
-async def send_long_message(bot, chat_id, text, parse_mode="HTML"):
-    MAX_LENGTH = 4000
-    for i in range(0, len(text), MAX_LENGTH):
-        part = text[i:i + MAX_LENGTH]
-        await bot.send_message(chat_id, part, parse_mode=parse_mode)
 
-# === Обработка сообщений со ссылками ===
+
+# === Обработка ссылок ===
 @dp.message()
 async def handle_spotify_link(message: types.Message):
     if not message.text:
@@ -237,20 +233,41 @@ async def handle_spotify_link(message: types.Message):
 
     url = message.text.strip()
 
-    # === 1️⃣ Проверяем — это ссылка на плейлист? ===
+    # === Плейлист ===
     if "spotify.com/playlist/" in url or "spotify.link/" in url:
-        reply_text = await get_playlist_tracks(url)
-        await send_long_message(bot, message.chat.id, reply_text, parse_mode="HTML")
-        return  # ⚠️ прекращаем выполнение, чтобы не обрабатывать как трек
+        playlist_parts, playlist_url = await get_playlist_tracks(url)
 
-    # === 2️⃣ Раскрываем короткие ссылки ===
+        # отправляем все части, кнопку добавляем только в последней
+        for i, part in enumerate(playlist_parts):
+            reply_markup = None
+            if i == len(playlist_parts) - 1:  # последняя часть
+                reply_markup = InlineKeyboardMarkup(
+                    inline_keyboard=[
+                        [InlineKeyboardButton(text="🎧 Открыть плейлист в Spotify", url=playlist_url)]
+                    ]
+                )
+
+            await bot.send_message(
+                message.chat.id,
+                part,
+                parse_mode="HTML",
+                reply_markup=reply_markup,
+            )
+
+        # удаляем исходное сообщение, если нужно
+        if should_auto_delete(message.chat):
+            asyncio.create_task(auto_delete_messages(AUTO_DELETE_DELAY, [message]))
+        return
+
+
+    # === Короткие ссылки ===
     if "spotify.link/" in url:
         url = await resolve_spotify_link(url)
         if not url:
             await message.reply("Не удалось раскрыть короткую ссылку 😕")
             return
 
-    # === 3️⃣ Проверяем, это трек ===
+    # === Трек ===
     if "open.spotify.com/track/" not in url:
         return
 
@@ -278,125 +295,24 @@ async def handle_spotify_link(message: types.Message):
         f"Label: {label}"
     )
 
-    keyboard = generate_keyboard(track, artist, url)
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🎧 Spotify", url=url)]])
 
     if image_url:
-        sent_message = await bot.send_photo(
-            chat_id=message.chat.id,
-            photo=image_url,
-            caption=caption,
-            parse_mode="Markdown",
-            reply_markup=keyboard,
-        )
+        await bot.send_photo(message.chat.id, photo=image_url, caption=caption, parse_mode="Markdown", reply_markup=keyboard)
     else:
-        sent_message = await bot.send_message(
-            chat_id=message.chat.id,
-            text=caption,
-            parse_mode="Markdown",
-            reply_markup=keyboard,
-        )
+        await bot.send_message(message.chat.id, text=caption, parse_mode="Markdown", reply_markup=keyboard)
 
-    if should_auto_delete(message.chat) and sent_message:
+    if should_auto_delete(message.chat):
         asyncio.create_task(auto_delete_messages(AUTO_DELETE_DELAY, [message]))
 
-# === Inline-режим ===
-@dp.inline_query()
-async def inline_handler(query: InlineQuery):
-    text = query.query.strip()
-    if not text:
-        return
 
-    results: list[InlineQueryResultArticle] = []
-
-    if "spotify.link/" in text or "open.spotify.com/track/" in text:
-        if "spotify.link/" in text:
-            text = await resolve_spotify_link(text)
-            if not text:
-                return
-
-        track_id = extract_track_id(text)
-        if not track_id:
-            return
-
-        track_info = await get_track_info(track_id)
-        if not track_info:
-            return
-
-        artist = track_info["artist"]
-        track = track_info["track"]
-        album = track_info["album"]
-        image_url = track_info["image"]
-        label = track_info["label"]
-        release_date = track_info["release_date"]
-
-        caption = (
-            f"`{artist} — {track}`\n"
-            f"***{album}***\n\n"
-            f"Release date: {release_date}\n"
-            f"Label: {label}"
-        )
-
-        keyboard = generate_keyboard(track, artist, text)
-        results.append(
-            InlineQueryResultArticle(
-                id=track_id,
-                title=f"{artist} — {track}",
-                description=album,
-                thumb_url=image_url,
-                input_message_content=InputTextMessageContent(
-                    message_text=caption, parse_mode="Markdown"
-                ),
-                reply_markup=keyboard,
-            )
-        )
-    else:
-        items = await search_spotify_tracks(text)
-        if not items:
-            await query.answer([], cache_time=1, is_personal=True)
-            return
-
-        for item in items:
-            track_id = item.get("id")
-            track = item.get("name", "Unknown")
-            artist = ", ".join(a["name"] for a in item.get("artists", [])) or "Unknown"
-            album = item.get("album", {}).get("name", "")
-            images = item.get("album", {}).get("images", [])
-            image_url = images[0]["url"] if images else None
-            spotify_url = item.get("external_urls", {}).get("spotify", "")
-            label = item.get("album", {}).get("label", "Unknown Label")
-            release_date = item.get("album", {}).get("release_date", "Unknown Date")
-
-            caption = (
-                f"`{artist} — {track}`\n"
-                f"***{album}***\n\n"
-                f"Release date: {release_date}\n"
-                f"Label: {label}"
-            )
-
-            keyboard = generate_keyboard(track, artist, spotify_url)
-
-            results.append(
-                InlineQueryResultArticle(
-                    id=track_id or f"{artist}-{track}",
-                    title=f"{artist} — {track}",
-                    description=album,
-                    thumb_url=image_url,
-                    input_message_content=InputTextMessageContent(
-                        message_text=caption, parse_mode="Markdown"
-                    ),
-                    reply_markup=keyboard,
-                )
-            )
-
-    await query.answer(results, cache_time=1, is_personal=True)
-
-# === Событие запуска ===
+# === Запуск ===
 async def on_startup():
     logging.info("✅ Бот запущен и готов к работе (включая inline-режим)")
 
 dp.startup.register(on_startup)
 
-# === Запуск ===
+
 async def main():
     while True:
         try:
@@ -404,6 +320,7 @@ async def main():
         except Exception as e:
             logging.error(f"Бот упал: {e}, перезапуск через 5 секунд")
             await asyncio.sleep(5)
+
 
 if __name__ == "__main__":
     asyncio.run(main())
