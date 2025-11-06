@@ -8,6 +8,9 @@ from aiogram import Bot, Dispatcher, types, F
 from aiogram.types import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
+    InlineQuery,
+    InlineQueryResultArticle,
+    InputTextMessageContent,
 )
 from aiogram.filters import Command
 from dotenv import load_dotenv
@@ -42,6 +45,7 @@ if not TELEGRAM_TOKEN or not SPOTIFY_CLIENT_ID or not SPOTIFY_CLIENT_SECRET:
 bot = Bot(token=TELEGRAM_TOKEN)
 dp = Dispatcher()
 
+
 # === /help ===
 @dp.message(Command("help"))
 @dp.message(F.text.lower().startswith("/help"))
@@ -53,9 +57,9 @@ async def send_help(message: types.Message):
         "• Отправь ссылку на трек или плейлист Spotify — я покажу подробности.\n"
         "• Работаю в личных сообщениях и группах.\n"
         "• Поддерживаю короткие ссылки <code>spotify.link</code>.\n\n"
-        "🎵 Inline режим: напиши <code>@имя_бота</code> и вставь ссылку на трек.\n\n"
+        "🎵 Inline режим: напиши <code>@имя_бота</code> и вставь название трека.\n\n"
         "📖 Пример:\n"
-        "<code>https://open.spotify.com/track/xxxxxxxxxxxxxxxx</code>"
+        "<code>@Spotify_Info_Bot The Weeknd</code>"
     )
     await message.answer(text, parse_mode="HTML")
 
@@ -122,6 +126,26 @@ async def get_track_info(track_id: str):
             "label": label,
             "release_date": release_date,
         }
+
+
+# === Поиск треков по названию ===
+async def search_spotify_tracks(query: str):
+    token = await get_spotify_token()
+    if not token:
+        logging.warning("Не удалось получить Spotify token для поиска")
+        return []
+
+    headers = {"Authorization": f"Bearer {token}"}
+    params = {"q": query, "type": "track", "limit": 5}
+
+    async with aiohttp.ClientSession() as session:
+        async with session.get("https://api.spotify.com/v1/search", headers=headers, params=params) as resp:
+            if resp.status != 200:
+                txt = await resp.text()
+                logging.warning(f"Spotify search error: {resp.status} {txt}")
+                return []
+            data = await resp.json()
+            return data.get("tracks", {}).get("items", []) or []
 
 
 # === Генерация клавиатуры ===
@@ -217,6 +241,54 @@ async def get_playlist_tracks(playlist_url: str):
         MAX_LENGTH = 4000
         parts = [full_text[i:i + MAX_LENGTH] for i in range(0, len(full_text), MAX_LENGTH)]
         return parts, playlist_url_full
+
+
+# === Inline поиск ===
+@dp.inline_query()
+async def inline_handler(query: InlineQuery):
+    text = query.query.strip()
+    if not text:
+        return
+
+    results = []
+    items = await search_spotify_tracks(text)
+    if not items:
+        await query.answer([], cache_time=1, is_personal=True)
+        return
+
+    for item in items:
+        track_id = item.get("id")
+        track = item.get("name", "Unknown")
+        artist = ", ".join(a["name"] for a in item.get("artists", [])) or "Unknown"
+        album = item.get("album", {}).get("name", "")
+        images = item.get("album", {}).get("images", [])
+        image_url = images[0]["url"] if images else None
+        spotify_url = item.get("external_urls", {}).get("spotify", "")
+        label = item.get("album", {}).get("label", "Unknown Label")
+        release_date = item.get("album", {}).get("release_date", "Unknown Date")
+
+        caption = (
+            f"`{artist} — {track}`\n"
+            f"***{album}***\n\n"
+            f"Release date: {release_date}\n"
+            f"Label: {label}"
+        )
+
+        keyboard = generate_keyboard(track, artist, spotify_url)
+        results.append(
+            InlineQueryResultArticle(
+                id=track_id or f"{artist}-{track}",
+                title=f"{artist} — {track}",
+                description=album,
+                thumb_url=image_url,
+                input_message_content=InputTextMessageContent(
+                    message_text=caption, parse_mode="Markdown"
+                ),
+                reply_markup=keyboard,
+            )
+        )
+
+    await query.answer(results, cache_time=1, is_personal=True)
 
 
 # === Автоудаление сообщений ===
