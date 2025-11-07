@@ -36,3 +36,4 @@ __pycache__/
 # Build artifacts
 dist/
 build/
+.env
