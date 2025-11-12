@@ -1,39 +1,61 @@
-# Python
+# --- Python general ---
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
+*.py[cod]
+*$py.class
 
-# Env
-.env
+# --- Virtualenv ---
 venv/
-.env.local
-.env.*.local
+.env/
+.env.bak/
+*.env
 
-# Logs
-*.log
-logs/
-*.sqlite3
-
-# VS Code / Editors
-.vscode/
-.idea/
-
-# Docker / Compose
-docker-compose.override.yml
-*.pid
-*.sock
-*.tar
-
-# Git / System
+# --- OS / IDE files ---
 .DS_Store
 Thumbs.db
+.vscode/
+.idea/
+*.swp
 
-# Cache
-.cache/
-__pycache__/
+# --- Logs / temp ---
+*.log
+logs/
+*.tmp
+tmp/
 
-# Build artifacts
-dist/
+# --- Build & packaging ---
 build/
-.env
+dist/
+*.egg-info/
+.eggs/
+
+# --- Coverage & testing ---
+.coverage
+coverage.xml
+htmlcov/
+.pytest_cache/
+.tox/
+.mypy_cache/
+.cache/
+junit-report/
+allure-results/
+allure-report/
+
+# --- Docker ---
+*.pid
+*.sock
+*.db
+*.tar
+*.gz
+*.bak
+docker-compose.override.yml
+
+# --- GitHub Actions & CI artifacts ---
+**/report.xml
+**/coverage.xml
+**/htmlcov/
+**/junit-report/
+**/.pytest_cache/
+
+# --- Project specific ---
+deploy.log
+spotify_bot.db
