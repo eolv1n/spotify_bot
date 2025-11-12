@@ -22,6 +22,10 @@ jobs:
 
   # --- Test (JUnit + coverage; всё берётся из requirements.txt) ---
   test:
+    env:
+      TELEGRAM_TOKEN: 123456789:ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghi
+      SPOTIFY_CLIENT_ID: dummy
+      SPOTIFY_CLIENT_SECRET: dummy
     runs-on: ubuntu-latest
     needs: lint
     steps:
