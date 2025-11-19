@@ -64,7 +64,8 @@ jobs:
           context: .
           file: ./Dockerfile
           push: true
-          tags: ghcr.io/${{ github.repository }}/spotify_bot:latest
+          tags: ghcr.io/${{ github.actor }}/spotify_bot:latest
+
 
   deploy:
     runs-on: ubuntu-latest
