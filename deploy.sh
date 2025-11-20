@@ -1,40 +1,130 @@
-#!/bin/bash
-set -e  # Остановить выполнение при любой ошибке
+#!/usr/bin/env bash
+set -euo pipefail
 
-echo "🚀 Обновляем Spotify Bot..."
+REPO_DIR="$HOME/spotify_bot"
+IMAGE_NAME="spotify_bot"
+CONTAINER_NAME="spotify_bot"
 
-cd ~/spotify_bot || { echo "❌ Не удалось перейти в каталог ~/spotify_bot"; exit 1; }
+log() {
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"
+}
 
-echo "📥 Тянем последние изменения из main..."
-git pull origin main
+echo "🚀 Deploy Spotify Bot"
+log "Repo dir: ${REPO_DIR}"
+echo "---------------------------------------------"
 
-echo "🐳 Пересобираем Docker-образ..."
-docker build -t spotify_bot .
+cd "$REPO_DIR" || { echo "❌ Cannot cd to $REPO_DIR"; exit 1; }
 
-# Проверяем, есть ли запущенный контейнер
-if [ "$(docker ps -q -f name=spotify_bot)" ]; then
-    echo "🛑 Останавливаем текущий контейнер..."
-    docker stop spotify_bot
-
-    echo "⏳ Ждём остановки контейнера..."
-    docker wait spotify_bot || true
+# 1. Health-check сервера (опциональный, но полезный)
+if [[ -x "./server_check.sh" ]]; then
+  log "Running server_check.sh..."
+  ./server_check.sh
+  log "server_check.sh completed successfully"
+else
+  log "server_check.sh not found or not executable — skipping"
 fi
 
-# Проверяем, существует ли контейнер (даже если он не запущен)
-if [ "$(docker ps -aq -f name=spotify_bot)" ]; then
-    echo "🗑 Удаляем старый контейнер..."
-    docker rm spotify_bot
+echo "---------------------------------------------"
+log "Updating code from git (origin/main)..."
+git pull --ff-only origin main
+VERSION="$(git rev-parse --short HEAD)"
+log "Current git SHA: ${VERSION}"
+
+echo "---------------------------------------------"
+# 2. Подготовка rollback: сохраняем прошлый образ
+if docker image inspect "${IMAGE_NAME}:latest" &>/dev/null; then
+  log "Tagging existing image ${IMAGE_NAME}:latest as ${IMAGE_NAME}:prev (for rollback)"
+  docker tag "${IMAGE_NAME}:latest" "${IMAGE_NAME}:prev"
+else
+  log "No existing ${IMAGE_NAME}:latest image — first deploy, rollback won't be available"
 fi
 
-echo "🚀 Запускаем новый контейнер..."
+# 3. Сборка нового образа
+log "Building new Docker image ${IMAGE_NAME}:${VERSION}..."
+docker build \
+  -t "${IMAGE_NAME}:${VERSION}" \
+  -t "${IMAGE_NAME}:latest" \
+  .
+
+log "Image build completed."
+echo "---------------------------------------------"
+
+# 4. Останавливаем и удаляем старый контейнер
+if docker ps -q -f "name=^${CONTAINER_NAME}$" >/dev/null; then
+  log "Stopping running container ${CONTAINER_NAME}..."
+  docker stop "${CONTAINER_NAME}"
+fi
+
+if docker ps -aq -f "name=^${CONTAINER_NAME}$" >/dev/null; then
+  log "Removing old container ${CONTAINER_NAME}..."
+  docker rm -f "${CONTAINER_NAME}"
+fi
+
+echo "---------------------------------------------"
+# 5. Стартуем новый контейнер с лимитами ресурсов
+log "Starting new container ${CONTAINER_NAME}..."
+set +e
 docker run -d \
-  --name spotify_bot \
+  --name "${CONTAINER_NAME}" \
   --env-file .env \
   --restart unless-stopped \
-  spotify_bot:latest
+  --memory=300m \
+  --cpus=0.5 \
+  "${IMAGE_NAME}:latest"
+run_rc=$?
+set -e
 
-echo "✅ Новый контейнер запущен!"
-docker ps | grep spotify_bot
+if [[ "$run_rc" -ne 0 ]]; then
+  log "❌ docker run failed with exit code ${run_rc}"
+  docker logs --tail=50 "${CONTAINER_NAME}" || true
 
-echo "📜 Последние логи:"
-docker logs --tail=10 spotify_bot
+  # Пытаемся откатиться на предыдущий образ
+  if docker image inspect "${IMAGE_NAME}:prev" &>/dev/null; then
+    log "Attempting rollback to image ${IMAGE_NAME}:prev..."
+    docker rm -f "${CONTAINER_NAME}" 2>/dev/null || true
+    docker run -d \
+      --name "${CONTAINER_NAME}" \
+      --env-file .env \
+      --restart unless-stopped \
+      --memory=300m \
+      --cpus=0.5 \
+      "${IMAGE_NAME}:prev" || true
+    log "Rollback container started (check manually)."
+  else
+    log "⚠️ No ${IMAGE_NAME}:prev image found — rollback not possible."
+  fi
+
+  exit 1
+fi
+
+# 6. Быстрый smoke-чек контейнера
+sleep 5
+STATE="$(docker inspect -f '{{.State.Status}}' "${CONTAINER_NAME}" 2>/dev/null || echo "unknown")"
+if [[ "$STATE" != "running" ]]; then
+  log "❌ Container is not running (state=${STATE})"
+  docker logs --tail=50 "${CONTAINER_NAME}" || true
+
+  if docker image inspect "${IMAGE_NAME}:prev" &>/dev/null; then
+    log "Attempting rollback to ${IMAGE_NAME}:prev..."
+    docker rm -f "${CONTAINER_NAME}" 2>/dev/null || true
+    docker run -d \
+      --name "${CONTAINER_NAME}" \
+      --env-file .env \
+      --restart unless-stopped \
+      --memory=300m \
+      --cpus=0.5 \
+      "${IMAGE_NAME}:prev" || true
+    log "Rollback container started (check manually)."
+  else
+    log "⚠️ No ${IMAGE_NAME}:prev image found — rollback not possible."
+  fi
+
+  exit 1
+fi
+
+echo "---------------------------------------------"
+log "Container ${CONTAINER_NAME} is running."
+log "Last 20 lines of logs:"
+docker logs --tail=20 "${CONTAINER_NAME}" || true
+
+log "✅ Deploy finished successfully."
