@@ -8,3 +8,4 @@ exclude =
     .venv,
     build,
     dist
+
