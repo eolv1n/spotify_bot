@@ -438,6 +438,5 @@ async def main():
         logging.info("🧩 Бот завершил работу корректно.")
 
 
-
 if __name__ == "__main__":
     asyncio.run(main())
