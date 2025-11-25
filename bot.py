@@ -14,6 +14,7 @@ from aiogram.types import (
 )
 from aiogram.filters import Command
 from dotenv import load_dotenv
+from datetime import datetime
 
 # === Настройка логов ===
 logging.basicConfig(level=logging.INFO)
@@ -73,6 +74,23 @@ def extract_track_id(spotify_url: str):
     match = re.search(r"track/([A-Za-z0-9]+)", spotify_url)
     return match.group(1) if match else None
 
+# === Функиця формата даты ===
+def format_date_ru(date_str: str) -> str:
+    """Преобразует дату Spotify (YYYY-MM-DD или YYYY-MM) в формат DD.MM.YYYY"""
+    try:
+        if len(date_str) == 10:  # YYYY-MM-DD
+            dt = datetime.strptime(date_str, "%Y-%m-%d")
+            return dt.strftime("%d.%m.%Y")
+        elif len(date_str) == 7:  # YYYY-MM
+            dt = datetime.strptime(date_str, "%Y-%m")
+            return dt.strftime("%m.%Y")
+        elif len(date_str) == 4:  # YYYY
+            return date_str
+    except Exception:
+        pass
+    return date_str  # если не удалось преобразовать
+
+
 # === Раскрываем короткие ссылки ===
 async def resolve_spotify_link(short_url: str) -> str:
     async with aiohttp.ClientSession() as session:
@@ -110,7 +128,9 @@ async def get_track_info(track_id: str):
             album_name = album_data["name"]
             album_id = album_data["id"]
             image_url = album_data["images"][0]["url"] if album_data.get("images") else None
-            release_date = album_data.get("release_date", "Unknown Date")
+            release_date_raw = album_data.get("release_date", "Unknown Date")
+            release_date = format_date_ru(release_date_raw)
+
 
         label = await get_album_label(album_id)
         return {
@@ -243,7 +263,7 @@ async def inline_handler(query: InlineQuery):
             spotify_url = item.get("external_urls", {}).get("spotify", "")
             album_id = item.get("album", {}).get("id")
             label = item.get("album", {}).get("label") or await get_album_label(album_id)
-            release_date = item.get("album", {}).get("release_date", "Unknown Date")
+            release_date = format_date_ru(item.get("album", {}).get("release_date", "Unknown Date"))
 
             caption = (
                 f"`{artist} — {track}`\n"
