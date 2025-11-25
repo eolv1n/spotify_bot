@@ -3,6 +3,21 @@ import logging
 import aiohttp
 import asyncio
 import os
+
+# --- 🔒 Безопасная проверка окружения ---
+# Если мы запускаемся в тестах (pytest) или в CI/CD — подставляем фиктивные значения
+if os.getenv("PYTEST_CURRENT_TEST") or os.getenv("CI") == "true":
+    for key in ("TELEGRAM_TOKEN", "SPOTIFY_CLIENT_ID", "SPOTIFY_CLIENT_SECRET"):
+        os.environ.setdefault(key, f"fake-{key.lower()}")
+else:
+    # Продакшн-режим — требуется реальный .env
+    from dotenv import load_dotenv
+    load_dotenv()
+    required = ["TELEGRAM_TOKEN", "SPOTIFY_CLIENT_ID", "SPOTIFY_CLIENT_SECRET"]
+    missing = [v for v in required if not os.getenv(v)]
+    if missing:
+        raise ValueError(f"❌ Не найдены необходимые переменные окружения: {missing}. Проверь .env файл.")
+
 from urllib.parse import quote
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.types import (
@@ -414,12 +429,14 @@ dp.startup.register(on_startup)
 
 # === Запуск ===
 async def main():
-    while True:
-        try:
-            await dp.start_polling(bot)
-        except Exception as e:
-            logging.error(f"Бот упал: {e}, перезапуск через 5 секунд")
-            await asyncio.sleep(5)
+    try:
+        await dp.start_polling(bot)
+    except Exception as e:
+        logging.error(f"❌ Бот упал: {e}")
+    finally:
+        await bot.session.close()
+        logging.info("🧩 Бот завершил работу корректно.")
+
 
 
 if __name__ == "__main__":

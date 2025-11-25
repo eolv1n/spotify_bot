@@ -4,18 +4,20 @@ FROM python:3.13-slim
 # Рабочая директория в контейнере
 WORKDIR /app
 
-# Установим зависимости системы (если нужны)
+# Минимум системных зависимостей
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl ca-certificates && \
-    rm -rf /var/lib/apt/lists/*
+    curl ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
 
-# Копируем файлы проекта
-COPY . .
+# Сначала только зависимости — ради кэша
+COPY requirements.txt .
 
-# Устанавливаем зависимости Python
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Загружаем переменные окружения
+# Потом уже весь код
+COPY . .
+
+# Логи без буфера
 ENV PYTHONUNBUFFERED=1
 
 # Запуск бота
