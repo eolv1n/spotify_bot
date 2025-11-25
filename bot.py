@@ -356,12 +356,14 @@ dp.startup.register(on_startup)
 
 # === Запуск ===
 async def main():
-    while True:
-        try:
-            await dp.start_polling(bot)
-        except Exception as e:
-            logging.error(f"Бот упал: {e}, перезапуск через 5 секунд")
-            await asyncio.sleep(5)
+    try:
+        await dp.start_polling(bot)
+    except Exception as e:
+        logging.error(f"❌ Бот упал: {e}")
+    finally:
+        await bot.session.close()
+        logging.info("🧩 Бот завершил работу корректно.")
+
 
 if __name__ == "__main__":
     asyncio.run(main())
