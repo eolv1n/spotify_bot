@@ -33,18 +33,27 @@ try:
     if AUTO_DELETE_DELAY < 0:
         raise ValueError
 except (TypeError, ValueError):
-    logging.warning("Некорректное значение AUTO_DELETE_DELAY='%s'. Автоудаление отключено.", AUTO_DELETE_DELAY_RAW)
+    logging.warning(
+        "Некорректное значение AUTO_DELETE_DELAY='%s'. Автоудаление отключено.",
+        AUTO_DELETE_DELAY_RAW,
+    )
     AUTO_DELETE_DELAY = 0
 else:
     if AUTO_DELETE_DELAY > 0:
-        logging.info("🕒 Автоудаление сообщений включено. Задержка: %s секунд.", AUTO_DELETE_DELAY)
+        logging.info(
+            "🕒 Автоудаление сообщений включено. Задержка: %s секунд.",
+            AUTO_DELETE_DELAY,
+        )
 
 if not TELEGRAM_TOKEN or not SPOTIFY_CLIENT_ID or not SPOTIFY_CLIENT_SECRET:
-    raise ValueError("❌ Не найдены необходимые переменные окружения! Проверь .env файл.")
+    raise ValueError(
+        "❌ Не найдены необходимые переменные окружения! Проверь .env файл."
+    )
 
 # === Создаем бота и диспетчер ===
 bot = Bot(token=TELEGRAM_TOKEN)
 dp = Dispatcher()
+
 
 # === /help ===
 @dp.message(Command("help"))
@@ -60,19 +69,26 @@ async def send_help(message: types.Message):
     )
     await message.answer(text, parse_mode="HTML")
 
+
 # === Spotify Auth ===
 async def get_spotify_token():
     url = "https://accounts.spotify.com/api/token"
     data = {"grant_type": "client_credentials"}
     async with aiohttp.ClientSession() as session:
-        async with session.post(url, data=data, auth=aiohttp.BasicAuth(SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET)) as resp:
+        async with session.post(
+            url,
+            data=data,
+            auth=aiohttp.BasicAuth(SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET),
+        ) as resp:
             token_data = await resp.json()
             return token_data.get("access_token")
+
 
 # === Извлекаем ID трека ===
 def extract_track_id(spotify_url: str):
     match = re.search(r"track/([A-Za-z0-9]+)", spotify_url)
     return match.group(1) if match else None
+
 
 # === Функиця формата даты ===
 def format_date_ru(date_str: str) -> str:
@@ -90,6 +106,7 @@ def format_date_ru(date_str: str) -> str:
         pass
     return date_str  # если не удалось преобразовать
 
+
 # === Раскрываем короткие ссылки ===
 async def resolve_spotify_link(short_url: str) -> str:
     async with aiohttp.ClientSession() as session:
@@ -100,23 +117,29 @@ async def resolve_spotify_link(short_url: str) -> str:
             logging.error(f"Ошибка раскрытия ссылки: {e}")
             return None
 
+
 # === Получаем лейбл альбома ===
 async def get_album_label(album_id: str) -> str:
     token = await get_spotify_token()
     headers = {"Authorization": f"Bearer {token}"}
     async with aiohttp.ClientSession() as session:
-        async with session.get(f"https://api.spotify.com/v1/albums/{album_id}", headers=headers) as resp:
+        async with session.get(
+            f"https://api.spotify.com/v1/albums/{album_id}", headers=headers
+        ) as resp:
             if resp.status != 200:
                 return "Unknown Label"
             data = await resp.json()
             return data.get("label", "Unknown Label")
+
 
 # === Получаем информацию о треке ===
 async def get_track_info(track_id: str):
     token = await get_spotify_token()
     headers = {"Authorization": f"Bearer {token}"}
     async with aiohttp.ClientSession() as session:
-        async with session.get(f"https://api.spotify.com/v1/tracks/{track_id}", headers=headers) as resp:
+        async with session.get(
+            f"https://api.spotify.com/v1/tracks/{track_id}", headers=headers
+        ) as resp:
             if resp.status != 200:
                 return None
             data = await resp.json()
@@ -126,10 +149,11 @@ async def get_track_info(track_id: str):
             album_data = data["album"]
             album_name = album_data["name"]
             album_id = album_data["id"]
-            image_url = album_data["images"][0]["url"] if album_data.get("images") else None
+            image_url = (
+                album_data["images"][0]["url"] if album_data.get("images") else None
+            )
             release_date_raw = album_data.get("release_date", "Unknown Date")
             release_date = format_date_ru(release_date_raw)
-
 
         label = await get_album_label(album_id)
         return {
@@ -140,6 +164,7 @@ async def get_track_info(track_id: str):
             "label": label,
             "release_date": release_date,
         }
+
 
 # === Поиск треков по названию ===
 async def search_spotify_tracks(query: str):
@@ -152,13 +177,16 @@ async def search_spotify_tracks(query: str):
     params = {"q": query, "type": "track", "limit": 5}
 
     async with aiohttp.ClientSession() as session:
-        async with session.get("https://api.spotify.com/v1/search", headers=headers, params=params) as resp:
+        async with session.get(
+            "https://api.spotify.com/v1/search", headers=headers, params=params
+        ) as resp:
             if resp.status != 200:
                 txt = await resp.text()
                 logging.warning(f"Spotify search error: {resp.status} {txt}")
                 return []
             data = await resp.json()
             return data.get("tracks", {}).get("items", []) or []
+
 
 # === Генерация клавиатуры ===
 def generate_keyboard(track, artist, spotify_url):
@@ -168,22 +196,39 @@ def generate_keyboard(track, artist, spotify_url):
             [InlineKeyboardButton(text="🎧 Spotify", url=spotify_url)],
             [
                 InlineKeyboardButton(text="🎵 ВКонтакте", url="https://vk.com/audio"),
-                InlineKeyboardButton(text="🎶 Яндекс.Музыка", url=f"https://music.yandex.ru/search?text={query_encoded}"),
+                InlineKeyboardButton(
+                    text="🎶 Яндекс.Музыка",
+                    url=f"https://music.yandex.ru/search?text={query_encoded}",
+                ),
             ],
             [
-                InlineKeyboardButton(text="☁️ SoundCloud", url=f"https://soundcloud.com/search?q={query_encoded}"),
-                InlineKeyboardButton(text="🍎 Apple Music", url=f"https://music.apple.com/search?term={query_encoded}"),
+                InlineKeyboardButton(
+                    text="☁️ SoundCloud",
+                    url=f"https://soundcloud.com/search?q={query_encoded}",
+                ),
+                InlineKeyboardButton(
+                    text="🍎 Apple Music",
+                    url=f"https://music.apple.com/search?term={query_encoded}",
+                ),
             ],
             [
-                InlineKeyboardButton(text="▶️ YouTube", url=f"https://www.youtube.com/results?search_query={query_encoded}"),
-                InlineKeyboardButton(text="🎵 YouTube Music", url=f"https://music.youtube.com/search?q={query_encoded}")
-            ]
+                InlineKeyboardButton(
+                    text="▶️ YouTube",
+                    url=f"https://www.youtube.com/results?search_query={query_encoded}",
+                ),
+                InlineKeyboardButton(
+                    text="🎵 YouTube Music",
+                    url=f"https://music.youtube.com/search?q={query_encoded}",
+                ),
+            ],
         ]
     )
+
 
 # === Автоудаление сообщений ===
 def should_auto_delete(chat: types.Chat) -> bool:
     return AUTO_DELETE_DELAY > 0 and chat.type in {"group", "supergroup"}
+
 
 async def auto_delete_messages(delay: int, messages: list[types.Message]):
     await asyncio.sleep(delay)
@@ -192,6 +237,7 @@ async def auto_delete_messages(delay: int, messages: list[types.Message]):
             await msg.delete()
         except Exception as e:
             logging.warning(f"Не удалось удалить сообщение {msg.message_id}: {e}")
+
 
 # === Inline режим (поиск и ссылки) ===
 @dp.inline_query()
@@ -261,8 +307,12 @@ async def inline_handler(query: InlineQuery):
             image_url = item.get("album", {}).get("images", [{}])[0].get("url")
             spotify_url = item.get("external_urls", {}).get("spotify", "")
             album_id = item.get("album", {}).get("id")
-            label = item.get("album", {}).get("label") or await get_album_label(album_id)
-            release_date = format_date_ru(item.get("album", {}).get("release_date", "Unknown Date"))
+            label = item.get("album", {}).get("label") or await get_album_label(
+                album_id
+            )
+            release_date = format_date_ru(
+                item.get("album", {}).get("release_date", "Unknown Date")
+            )
 
             caption = (
                 f"`{artist} — {track}`\n"
@@ -287,6 +337,7 @@ async def inline_handler(query: InlineQuery):
             )
 
     await query.answer(results, cache_time=1, is_personal=True)
+
 
 # === Обработка ссылок (сообщений) ===
 @dp.message()
@@ -352,11 +403,14 @@ async def handle_spotify_link(message: types.Message):
     if should_auto_delete(message.chat) and sent_message:
         asyncio.create_task(auto_delete_messages(AUTO_DELETE_DELAY, [message]))
 
+
 # === Событие запуска ===
 async def on_startup():
     logging.info("✅ Бот запущен и готов к работе (включая inline-режим)")
 
+
 dp.startup.register(on_startup)
+
 
 # === Запуск ===
 async def main():
@@ -366,6 +420,7 @@ async def main():
         except Exception as e:
             logging.error(f"Бот упал: {e}, перезапуск через 5 секунд")
             await asyncio.sleep(5)
+
 
 if __name__ == "__main__":
     asyncio.run(main())
