@@ -90,7 +90,6 @@ def format_date_ru(date_str: str) -> str:
         pass
     return date_str  # если не удалось преобразовать
 
-
 # === Раскрываем короткие ссылки ===
 async def resolve_spotify_link(short_url: str) -> str:
     async with aiohttp.ClientSession() as session:
