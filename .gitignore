@@ -59,3 +59,4 @@ docker-compose.override.yml
 # --- Project specific ---
 deploy.log
 spotify_bot.db
+cache/

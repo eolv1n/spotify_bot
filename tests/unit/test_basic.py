@@ -1,5 +1,18 @@
 # tests/unit/test_basic.py
 import pytest
+from unittest.mock import AsyncMock, patch
+import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
+
+from bot import (
+    get_cached_track,
+    parse_apple_music,
+    parse_yandex_music,
+    parse_music_url,
+    parse_soundcloud,
+    set_cached_track,
+)
 
 def test_math_addition():
     """Пример самого простого юнит-теста."""
@@ -18,3 +31,140 @@ def test_string_contains():
 ])
 def test_parametrized(text, expected):
     assert text == expected
+
+
+@pytest.mark.asyncio
+async def test_parse_apple_music():
+    """Тест парсинга Apple Music (mock)."""
+    with patch('bot.aiohttp.ClientSession.get') as mock_get:
+        mock_resp = AsyncMock()
+        mock_resp.status = 200
+        mock_resp.text = AsyncMock(return_value='''
+        <html>
+        <head>
+        <meta property="og:title" content="Song Name by Artist Name on Apple Music">
+        <meta property="og:description" content="Album Name · 2023">
+        <meta property="og:image" content="https://example.com/image.jpg">
+        </head>
+        </html>
+        ''')
+        mock_get.return_value.__aenter__.return_value = mock_resp
+        
+        result = await parse_apple_music("https://music.apple.com/us/album/song/id123")
+        assert result["artist"] == "Artist Name"
+        assert result["track"] == "Song Name"
+        assert result["album"] == "Album Name"
+        assert result["release_date"] == "2023"
+
+
+@pytest.mark.asyncio
+async def test_parse_soundcloud():
+    """Тест парсинга SoundCloud (mock)."""
+    with patch('bot.aiohttp.ClientSession.get') as mock_get:
+        mock_resp = AsyncMock()
+        mock_resp.status = 200
+        mock_resp.text = AsyncMock(return_value='''
+        <html>
+        <head>
+        <meta property="og:title" content="Artist - Track">
+        <meta property="og:image" content="https://example.com/image.jpg">
+        </head>
+        </html>
+        ''')
+        mock_get.return_value.__aenter__.return_value = mock_resp
+        
+        result = await parse_soundcloud("https://soundcloud.com/artist/track")
+        assert result["artist"] == "Artist"
+        assert result["track"] == "Track"
+
+
+@pytest.mark.asyncio
+async def test_parse_yandex_music():
+    """Тест парсинга Яндекс.Музыки через встроенный JSON."""
+    with patch('bot.aiohttp.ClientSession.get') as mock_get:
+        mock_resp = AsyncMock()
+        mock_resp.status = 200
+        mock_resp.text = AsyncMock(return_value='''
+        <html>
+        <body>
+        <script>
+        window.__DATA__ = {
+          "entities": {
+            "tracks": {
+              "123": {
+                "title": "Track Name",
+                "coverUri": "avatars.yandex.net/get-music-content/12345/%%",
+                "artists": [{"name": "Artist One"}, {"name": "Artist Two"}],
+                "albums": [{"title": "Album Name", "releaseDate": "2024-01-01"}]
+              }
+            }
+          }
+        };
+        </script>
+        </body>
+        </html>
+        ''')
+        mock_get.return_value.__aenter__.return_value = mock_resp
+
+        result = await parse_yandex_music("https://music.yandex.ru/album/1/track/123")
+        assert result["artist"] == "Artist One, Artist Two"
+        assert result["track"] == "Track Name"
+        assert result["album"] == "Album Name"
+        assert result["release_date"] == "2024-01-01"
+        assert result["image"] == "https://avatars.yandex.net/get-music-content/12345/400x400"
+
+
+@pytest.mark.asyncio
+async def test_parse_yandex_music_with_empty_albums():
+    """Пустой список альбомов не должен ронять парсер."""
+    with patch('bot.aiohttp.ClientSession.get') as mock_get:
+        mock_resp = AsyncMock()
+        mock_resp.status = 200
+        mock_resp.text = AsyncMock(return_value='''
+        <html>
+        <body>
+        <script>
+        window.__DATA__ = {
+          "entities": {
+            "tracks": {
+              "123": {
+                "title": "Track Name",
+                "artists": [{"name": "Artist One"}],
+                "albums": []
+              }
+            }
+          }
+        };
+        </script>
+        </body>
+        </html>
+        ''')
+        mock_get.return_value.__aenter__.return_value = mock_resp
+
+        result = await parse_yandex_music("https://music.yandex.ru/album/1/track/123")
+        assert result["artist"] == "Artist One"
+        assert result["album"] == "Unknown Album"
+        assert result["release_date"] == "Unknown Date"
+
+
+@pytest.mark.asyncio
+async def test_parse_music_url_uses_cache():
+    """Повторный вызов должен брать данные из кеша без запроса в сеть."""
+    url = "https://music.apple.com/us/album/song/id123"
+    payload = {
+        "artist": "Cached Artist",
+        "track": "Cached Track",
+        "album": "Cached Album",
+        "image": None,
+        "label": "Apple Music",
+        "release_date": "2025",
+        "source": "apple_music",
+        "source_url": url,
+    }
+    set_cached_track(url, payload)
+
+    with patch('bot.parse_apple_music', new_callable=AsyncMock) as mock_parser:
+        result = await parse_music_url(url)
+        assert result == payload
+        mock_parser.assert_not_called()
+        assert get_cached_track(url) == payload
