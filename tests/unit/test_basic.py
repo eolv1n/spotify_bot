@@ -1,20 +1,23 @@
 # tests/unit/test_basic.py
-import pytest
-from unittest.mock import AsyncMock, patch
-import sys
+# flake8: noqa: E402
 import os
+import sys
+from unittest.mock import AsyncMock, patch
+
+import pytest
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
-from bot import (
-    extract_yandex_track_ref,
-    get_cached_track,
-    is_suspicious_yandex_label,
-    parse_apple_music,
-    parse_yandex_music,
-    parse_music_url,
-    parse_soundcloud,
-    set_cached_track,
-)
+import bot
+
+extract_yandex_track_ref = bot.extract_yandex_track_ref
+get_cached_track = bot.get_cached_track
+is_suspicious_yandex_label = bot.is_suspicious_yandex_label
+parse_apple_music = bot.parse_apple_music
+parse_yandex_music = bot.parse_yandex_music
+parse_music_url = bot.parse_music_url
+parse_soundcloud = bot.parse_soundcloud
+set_cached_track = bot.set_cached_track
 
 def test_math_addition():
     """Пример самого простого юнит-теста."""
@@ -51,7 +54,7 @@ async def test_parse_apple_music():
         </html>
         ''')
         mock_get.return_value.__aenter__.return_value = mock_resp
-        
+
         result = await parse_apple_music("https://music.apple.com/us/album/song/id123")
         assert result["artist"] == "Artist Name"
         assert result["track"] == "Song Name"
@@ -74,7 +77,7 @@ async def test_parse_soundcloud():
         </html>
         ''')
         mock_get.return_value.__aenter__.return_value = mock_resp
-        
+
         result = await parse_soundcloud("https://soundcloud.com/artist/track")
         assert result["artist"] == "Artist"
         assert result["track"] == "Track"
