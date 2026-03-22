@@ -15,6 +15,8 @@ from aiogram.types import (
 from app.config import AUTO_DELETE_DELAY, TELEGRAM_TOKEN
 from app.formatting import build_caption, build_inline_description
 from app.sources import (
+    build_unsupported_url_message,
+    classify_music_url,
     get_album_label,
     parse_music_url,
     resolve_spotify_link,
@@ -23,6 +25,15 @@ from app.sources import (
 
 bot = Bot(token=TELEGRAM_TOKEN)
 dp = Dispatcher()
+
+
+def build_inline_notice_result(query_text: str, message: str):
+    return InlineQueryResultArticle(
+        id=f"notice-{hash(query_text)}",
+        title="Ссылка пока не поддерживается",
+        description=message,
+        input_message_content=InputTextMessageContent(message_text=message),
+    )
 
 
 def generate_keyboard(track, artist, source_url, source="spotify"):
@@ -115,20 +126,20 @@ async def inline_handler(query: InlineQuery):
         return
 
     results = []
-    if any(
-        domain in text
-        for domain in [
-            "open.spotify.com",
-            "music.apple.com",
-            "music.yandex.ru",
-            "soundcloud.com",
-            "spotify.link",
-        ]
-    ):
-        if "spotify.link/" in text:
+    initial_classification = classify_music_url(text)
+    if initial_classification.get("service") or "spotify.link/" in text:
+        if initial_classification.get("service") == "spotify_shortlink":
             text = await resolve_spotify_link(text)
             if not text:
                 return
+        classification = classify_music_url(text)
+
+        if not classification.get("supported"):
+            message = build_unsupported_url_message(classification)
+            if message:
+                results.append(build_inline_notice_result(text, message))
+                await query.answer(results, cache_time=1, is_personal=True)
+            return
 
         track_info = await parse_music_url(text)
         if not track_info:
@@ -201,21 +212,21 @@ async def handle_music_link(message: types.Message):
         return
 
     url = message.text.strip()
-    if "spotify.link/" in url:
+    classification = classify_music_url(url)
+    if classification.get("service") == "spotify_shortlink":
         url = await resolve_spotify_link(url)
         if not url:
             await message.reply("Не удалось раскрыть короткую ссылку 😕")
             return
+        classification = classify_music_url(url)
 
-    if any(
-        domain in url
-        for domain in [
-            "open.spotify.com",
-            "music.apple.com",
-            "music.yandex.ru",
-            "soundcloud.com",
-        ]
-    ):
+    if classification.get("service"):
+        if not classification.get("supported"):
+            unsupported_message = build_unsupported_url_message(classification)
+            if unsupported_message:
+                await message.reply(unsupported_message)
+            return
+
         track_info = await parse_music_url(url)
         if not track_info:
             await message.reply("Не удалось получить информацию о треке 😢")

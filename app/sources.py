@@ -3,6 +3,7 @@ import json
 import logging
 import re
 import threading
+from urllib.parse import parse_qs, urlparse
 
 import aiohttp
 from bs4 import BeautifulSoup
@@ -21,6 +22,123 @@ from app.formatting import (
 
 _yandex_client = None
 _yandex_client_lock = threading.Lock()
+
+SUPPORTED_TRACK_SERVICES = {"spotify", "apple_music", "yandex_music", "soundcloud"}
+SOUNDCLOUD_NON_TRACK_PREFIXES = {
+    "charts",
+    "discover",
+    "genres",
+    "search",
+    "sets",
+    "station",
+    "stream",
+    "upload",
+    "you",
+}
+
+
+def classify_music_url(url: str) -> dict:
+    parsed = urlparse(url)
+    host = parsed.netloc.lower().removeprefix("www.")
+    path = parsed.path.strip("/")
+    path_parts = [part for part in path.split("/") if part]
+    query = parse_qs(parsed.query)
+
+    if host == "spotify.link":
+        return {
+            "service": "spotify_shortlink",
+            "kind": "shortlink",
+            "supported": True,
+        }
+
+    if host == "open.spotify.com":
+        if "track" in path_parts:
+            return {"service": "spotify", "kind": "track", "supported": True}
+        if "album" in path_parts:
+            return {"service": "spotify", "kind": "album", "supported": False}
+        if "playlist" in path_parts:
+            return {"service": "spotify", "kind": "playlist", "supported": False}
+        if "artist" in path_parts:
+            return {"service": "spotify", "kind": "artist", "supported": False}
+
+    if host == "music.apple.com":
+        if "i" in query or "song" in path_parts:
+            return {"service": "apple_music", "kind": "track", "supported": True}
+        if "album" in path_parts:
+            return {"service": "apple_music", "kind": "album", "supported": False}
+        if "playlist" in path_parts:
+            return {"service": "apple_music", "kind": "playlist", "supported": False}
+        if "artist" in path_parts:
+            return {"service": "apple_music", "kind": "artist", "supported": False}
+
+    if host == "music.yandex.ru":
+        if "track" in path_parts:
+            return {"service": "yandex_music", "kind": "track", "supported": True}
+        if "album" in path_parts:
+            return {"service": "yandex_music", "kind": "album", "supported": False}
+        if "playlists" in path_parts or "users" in path_parts:
+            return {"service": "yandex_music", "kind": "playlist", "supported": False}
+        if "artist" in path_parts:
+            return {"service": "yandex_music", "kind": "artist", "supported": False}
+
+    if host == "soundcloud.com":
+        if "sets" in path_parts:
+            return {"service": "soundcloud", "kind": "set", "supported": False}
+        if len(path_parts) >= 2 and path_parts[0] not in SOUNDCLOUD_NON_TRACK_PREFIXES:
+            return {"service": "soundcloud", "kind": "track", "supported": True}
+        return {"service": "soundcloud", "kind": "page", "supported": False}
+
+    if host in {"youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be"}:
+        if host == "youtu.be":
+            return {"service": "youtube", "kind": "video", "supported": False}
+        if "list" in query or "playlist" in path_parts:
+            return {"service": "youtube", "kind": "playlist", "supported": False}
+        if "shorts" in path_parts:
+            return {"service": "youtube", "kind": "short", "supported": False}
+        if parsed.path == "/watch" and "v" in query:
+            return {"service": "youtube", "kind": "video", "supported": False}
+        return {"service": "youtube", "kind": "page", "supported": False}
+
+    return {"service": None, "kind": None, "supported": False}
+
+
+def build_unsupported_url_message(classification: dict) -> str | None:
+    service = classification.get("service")
+    kind = classification.get("kind")
+
+    if not service:
+        return None
+
+    service_names = {
+        "spotify": "Spotify",
+        "apple_music": "Apple Music",
+        "yandex_music": "Яндекс.Музыка",
+        "soundcloud": "SoundCloud",
+        "youtube": "YouTube",
+    }
+    kind_names = {
+        "album": "альбом",
+        "artist": "страница артиста",
+        "page": "страница сервиса",
+        "playlist": "плейлист",
+        "set": "сет",
+        "short": "shorts-видео",
+        "video": "видео",
+    }
+
+    service_name = service_names.get(service, service)
+    kind_name = kind_names.get(kind, "ссылка")
+
+    if service == "youtube":
+        return (
+            f"Распознал {service_name}, но пока умею работать только с музыкальными "
+            f"стриминг-ссылками, а не с типом `{kind_name}` 😕"
+        )
+
+    return (
+        f"Похоже, это не ссылка на трек, а `{kind_name}` в {service_name}. "
+        "Сейчас я умею разбирать только треки."
+    )
 
 
 def extract_json_from_script(script_text: str):
@@ -524,14 +642,18 @@ async def parse_music_url(url: str):
     if cached:
         return cached
 
+    classification = classify_music_url(url)
+    if not classification.get("supported"):
+        return None
+
     parsed = None
-    if "music.apple.com" in url:
+    if classification["service"] == "apple_music":
         parsed = await parse_apple_music(url)
-    elif "music.yandex.ru" in url:
+    elif classification["service"] == "yandex_music":
         parsed = await parse_yandex_music(url)
-    elif "soundcloud.com" in url:
+    elif classification["service"] == "soundcloud":
         parsed = await parse_soundcloud(url)
-    elif "open.spotify.com" in url:
+    elif classification["service"] == "spotify":
         track_id = extract_track_id(url)
         if track_id:
             parsed = await get_track_info(track_id)

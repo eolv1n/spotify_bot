@@ -15,7 +15,9 @@ from app.formatting import (
 from app import sources
 from app.sources import (
     aiohttp,
+    build_unsupported_url_message,
     build_yandex_payload,
+    classify_music_url,
     extract_apple_music_song_url,
     extract_json_from_script,
     extract_track_id,
@@ -54,8 +56,10 @@ __all__ = [
     "bot",
     "build_caption",
     "build_inline_description",
+    "build_unsupported_url_message",
     "build_track_payload",
     "build_yandex_payload",
+    "classify_music_url",
     "dp",
     "extract_apple_music_song_url",
     "extract_json_from_script",

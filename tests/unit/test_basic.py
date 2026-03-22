@@ -10,6 +10,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
 import bot
 
+build_unsupported_url_message = bot.build_unsupported_url_message
+classify_music_url = bot.classify_music_url
 extract_yandex_track_ref = bot.extract_yandex_track_ref
 extract_apple_music_song_url = bot.extract_apple_music_song_url
 build_caption = bot.build_caption
@@ -209,6 +211,60 @@ def test_extract_yandex_track_ref():
     assert extract_yandex_track_ref("https://music.yandex.ru/album/1/track/123") == "123:1"
     assert extract_yandex_track_ref("https://music.yandex.ru/track/123") == "123"
     assert extract_yandex_track_ref("https://example.com") is None
+
+
+def test_classify_music_url_recognizes_supported_track_links():
+    assert classify_music_url("https://open.spotify.com/track/abc123") == {
+        "service": "spotify",
+        "kind": "track",
+        "supported": True,
+    }
+    assert classify_music_url("https://music.apple.com/us/song/life/1488790382") == {
+        "service": "apple_music",
+        "kind": "track",
+        "supported": True,
+    }
+    assert classify_music_url("https://music.yandex.ru/album/1/track/123") == {
+        "service": "yandex_music",
+        "kind": "track",
+        "supported": True,
+    }
+    assert classify_music_url("https://soundcloud.com/artist/track") == {
+        "service": "soundcloud",
+        "kind": "track",
+        "supported": True,
+    }
+
+
+def test_classify_music_url_recognizes_unsupported_types():
+    assert classify_music_url("https://soundcloud.com/artist/sets/live-set") == {
+        "service": "soundcloud",
+        "kind": "set",
+        "supported": False,
+    }
+    assert classify_music_url("https://music.apple.com/us/album/album-name/123456") == {
+        "service": "apple_music",
+        "kind": "album",
+        "supported": False,
+    }
+    assert classify_music_url("https://www.youtube.com/watch?v=abcdef") == {
+        "service": "youtube",
+        "kind": "video",
+        "supported": False,
+    }
+
+
+def test_build_unsupported_url_message_is_human_readable():
+    soundcloud_message = build_unsupported_url_message(
+        {"service": "soundcloud", "kind": "set", "supported": False}
+    )
+    youtube_message = build_unsupported_url_message(
+        {"service": "youtube", "kind": "video", "supported": False}
+    )
+
+    assert "не ссылка на трек" in soundcloud_message
+    assert "сет" in soundcloud_message
+    assert "YouTube" in youtube_message
 
 
 def test_is_suspicious_yandex_label():
@@ -470,3 +526,11 @@ async def test_parse_music_url_uses_cache():
         assert result == payload
         mock_parser.assert_not_called()
         assert get_cached_track(url) == payload
+
+
+@pytest.mark.asyncio
+async def test_parse_music_url_skips_unsupported_classified_links():
+    with patch("app.sources.parse_soundcloud", new_callable=AsyncMock) as mock_parser:
+        result = await parse_music_url("https://soundcloud.com/artist/sets/live-set")
+        assert result is None
+        mock_parser.assert_not_called()
