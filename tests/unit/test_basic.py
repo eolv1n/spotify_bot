@@ -374,6 +374,12 @@ def test_clean_soundcloud_title_removes_editorial_noise():
 def test_clean_youtube_music_helpers():
     assert clean_youtube_music_artist("Nox Vahn - Topic") == "Nox Vahn"
     assert clean_youtube_music_track("Follow Me (Official Audio)") == "Follow Me"
+    assert (
+        clean_youtube_music_track(
+            "Rick Astley - Never Gonna Give You Up (Official Video) (4K Remaster)"
+        )
+        == "Rick Astley - Never Gonna Give You Up"
+    )
 
 
 def test_build_caption_hides_generic_soundcloud_label():

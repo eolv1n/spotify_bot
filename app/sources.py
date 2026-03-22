@@ -629,8 +629,18 @@ def clean_youtube_music_artist(value: str) -> str:
 
 def clean_youtube_music_track(value: str) -> str:
     cleaned = (value or "").strip()
-    cleaned = re.sub(r"\s*\((official|official audio|official video|lyric video)[^)]+\)\s*$", "", cleaned, flags=re.I)
-    cleaned = re.sub(r"\s*\[(official|official audio|official video|lyrics?)[^\]]+\]\s*$", "", cleaned, flags=re.I)
+    noise_patterns = [
+        r"\s*\((?:official|official audio|official video|audio|video|lyric video|lyrics?|4k remaster|hd|hq|remaster(?:ed)?)\)\s*$",
+        r"\s*\[(?:official|official audio|official video|audio|video|lyrics?|4k remaster|hd|hq|remaster(?:ed)?)\]\s*$",
+        r"\s*-\s*(?:official|official audio|official video|audio|video|lyrics?|4k remaster|hd|hq|remaster(?:ed)?)\s*$",
+        r"\s*\((?:[^)]*official[^)]*|[^)]*lyrics?[^)]*|[^)]*4k[^)]*|[^)]*remaster(?:ed)?[^)]*|[^)]*hd[^)]*|[^)]*hq[^)]*)\)\s*$",
+        r"\s*\[(?:[^\]]*official[^\]]*|[^\]]*lyrics?[^\]]*|[^\]]*4k[^\]]*|[^\]]*remaster(?:ed)?[^\]]*|[^\]]*hd[^\]]*|[^\]]*hq[^\]]*)\]\s*$",
+    ]
+    previous = None
+    while cleaned != previous:
+        previous = cleaned
+        for pattern in noise_patterns:
+            cleaned = re.sub(pattern, "", cleaned, flags=re.I).strip()
     return cleaned or "Unknown Track"
 
 
