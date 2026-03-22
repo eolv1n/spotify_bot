@@ -486,15 +486,16 @@ def test_build_inline_description_hides_unknown_album():
     assert build_inline_description("Unknown Album", "YouTube Music", "youtube_music") == ""
 
 
-def test_chat_feedback_rules():
+def test_chat_feedback_rules(monkeypatch):
     private_chat = type("Chat", (), {"type": "private"})()
     group_chat = type("Chat", (), {"type": "group"})()
     channel_chat = type("Chat", (), {"type": "channel"})()
+    monkeypatch.setattr("app.telegram_app.AUTO_DELETE_DELAY", 30)
 
     assert should_send_error_feedback(private_chat) is True
     assert should_send_error_feedback(group_chat) is False
     assert should_send_error_feedback(channel_chat) is False
-    assert should_auto_delete(channel_chat) is False
+    assert should_auto_delete(channel_chat) is True
 
 
 def test_generate_keyboard_does_not_duplicate_apple_music_button():

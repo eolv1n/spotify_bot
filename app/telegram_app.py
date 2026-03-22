@@ -96,7 +96,7 @@ def generate_keyboard(track, artist, source_url, source="spotify"):
 
 
 def should_auto_delete(chat: types.Chat) -> bool:
-    return AUTO_DELETE_DELAY > 0 and chat.type in {"group", "supergroup"}
+    return AUTO_DELETE_DELAY > 0 and chat.type in {"group", "supergroup", "channel"}
 
 
 def should_send_error_feedback(chat: types.Chat) -> bool:
