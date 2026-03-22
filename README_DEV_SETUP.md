@@ -209,11 +209,17 @@ bash scripts/clean.sh
 Перед первым деплоем на сервере:
 
 ```bash
-mkdir -p deploy/wireguard/wg_confs
-cp deploy/wireguard/wg_confs/wg0.conf.example deploy/wireguard/wg_confs/wg0.conf
+mkdir -p ~/spotify_bot_runtime/wireguard/wg_confs
+cp deploy/wireguard/wg_confs/wg0.conf.example ~/spotify_bot_runtime/wireguard/wg_confs/wg0.conf
 ```
 
 После этого заполни `wg0.conf` своими ключами и endpoint.
+
+Важно:
+
+- живой `WireGuard`-конфиг хранится вне git-репозитория
+- это защищает деплой от конфликтов прав доступа после запуска контейнера
+- при необходимости можно переопределить путь через `WG_CONFIG_DIR`
 
 Обычный деплой через сервер:
 
@@ -221,6 +227,13 @@ cp deploy/wireguard/wg_confs/wg0.conf.example deploy/wireguard/wg_confs/wg0.conf
 ssh <server>
 cd ~/spotify_bot
 ./deploy.sh
+```
+
+Если раньше конфиг лежал внутри репозитория, миграция такая:
+
+```bash
+mkdir -p ~/spotify_bot_runtime/wireguard/wg_confs
+cp ~/spotify_bot/deploy/wireguard/wg_confs/wg0.conf ~/spotify_bot_runtime/wireguard/wg_confs/wg0.conf
 ```
 
 ## 10. Отладка на сервере

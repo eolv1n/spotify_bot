@@ -5,10 +5,12 @@ REPO_DIR="$HOME/spotify_bot"
 IMAGE_NAME="spotify_bot"
 BOT_CONTAINER_NAME="spotify_bot"
 WG_CONTAINER_NAME="spotify_bot_wg"
-WG_CONFIG_PATH="deploy/wireguard/wg_confs/wg0.conf"
+WG_CONFIG_DIR="${WG_CONFIG_DIR:-$HOME/spotify_bot_runtime/wireguard}"
+WG_CONFIG_PATH="$WG_CONFIG_DIR/wg_confs/wg0.conf"
 
 echo "🚀 Деплой Spotify Bot"
 echo "📍 Репозиторий: $REPO_DIR"
+echo "📡 WireGuard runtime: $WG_CONFIG_DIR"
 echo "📅 Дата: $(date)"
 echo "---------------------------------------------"
 
@@ -16,12 +18,6 @@ cd "$REPO_DIR" || { echo "❌ Не удалось перейти в катало
 
 if ! docker compose version >/dev/null 2>&1; then
   echo "❌ docker compose не найден. Установи Docker Compose plugin на сервере."
-  exit 1
-fi
-
-if [[ ! -f "$WG_CONFIG_PATH" ]]; then
-  echo "❌ Не найден WireGuard-конфиг: $WG_CONFIG_PATH"
-  echo "ℹ️ Скопируй deploy/wireguard/wg_confs/wg0.conf.example в wg0.conf и заполни своими ключами."
   exit 1
 fi
 
@@ -38,6 +34,18 @@ echo "---------------------------------------------"
 echo "📥 Обновляем main из GitHub..."
 git fetch origin main
 git reset --hard origin/main
+
+mkdir -p "$WG_CONFIG_DIR/wg_confs"
+
+if [[ ! -f "$WG_CONFIG_PATH" ]]; then
+  echo "❌ Не найден WireGuard-конфиг: $WG_CONFIG_PATH"
+  echo "ℹ️ Создай его командой:"
+  echo "   cp $REPO_DIR/deploy/wireguard/wg_confs/wg0.conf.example $WG_CONFIG_PATH"
+  echo "ℹ️ Затем заполни своими ключами и endpoint."
+  exit 1
+fi
+
+export WG_CONFIG_DIR
 
 VERSION="$(git rev-parse --short HEAD)"
 echo "🏷 Версия (git SHA): $VERSION"
@@ -91,6 +99,9 @@ fi
 
 echo "✅ Контейнеры успешно запущены"
 docker compose ps
+
+echo "🧭 Проверка внешнего WG runtime:"
+ls -la "$WG_CONFIG_DIR" "$WG_CONFIG_DIR/wg_confs" || true
 
 echo "📜 Последние логи WireGuard:"
 docker logs --tail=20 "${WG_CONTAINER_NAME}" || true
