@@ -37,6 +37,79 @@ def build_inline_notice_result(query_text: str, message: str):
     )
 
 
+def build_inline_track_result(
+    *,
+    result_id: str,
+    artist: str,
+    track: str,
+    album: str,
+    image_url: str | None,
+    label: str,
+    release_date: str,
+    source: str,
+    source_url: str,
+):
+    caption = build_caption(artist, track, album, release_date, label, source)
+    keyboard = generate_keyboard(track, artist, source_url, source)
+    return InlineQueryResultArticle(
+        id=result_id,
+        title=f"{artist} — {track}",
+        description=build_inline_description(album, label, source),
+        thumb_url=image_url,
+        input_message_content=InputTextMessageContent(
+            message_text=caption,
+            parse_mode="Markdown",
+        ),
+        reply_markup=keyboard,
+    )
+
+
+def build_inline_search_shortcuts(query_text: str):
+    encoded = quote(query_text)
+    shortcuts = [
+        (
+            "ytm",
+            "🎵 YouTube Music search",
+            "Открыть поиск в YouTube Music",
+            f"https://music.youtube.com/search?q={encoded}",
+        ),
+        (
+            "yt",
+            "▶️ YouTube search",
+            "Открыть поиск в YouTube",
+            f"https://www.youtube.com/results?search_query={encoded}",
+        ),
+        (
+            "sc",
+            "☁️ SoundCloud search",
+            "Открыть поиск в SoundCloud",
+            f"https://soundcloud.com/search?q={encoded}",
+        ),
+        (
+            "ym",
+            "🎶 Яндекс.Музыка search",
+            "Открыть поиск в Яндекс.Музыке",
+            f"https://music.yandex.ru/search?text={encoded}",
+        ),
+    ]
+    results = []
+    for suffix, title, description, url in shortcuts:
+        results.append(
+            InlineQueryResultArticle(
+                id=f"shortcut-{suffix}-{hash(query_text)}",
+                title=title,
+                description=description,
+                input_message_content=InputTextMessageContent(
+                    message_text=f"{title}\n{url}"
+                ),
+                reply_markup=InlineKeyboardMarkup(
+                    inline_keyboard=[[InlineKeyboardButton(text="Открыть", url=url)]]
+                ),
+            )
+        )
+    return results
+
+
 def generate_keyboard(track, artist, source_url, source="spotify"):
     query_encoded = quote(f"{track} {artist}")
     source_button_labels = {
@@ -165,25 +238,27 @@ async def inline_handler(query: InlineQuery):
         source = track_info.get("source", "spotify")
         source_url = track_info.get("source_url", text)
 
-        caption = build_caption(artist, track, album, release_date, label, source)
-        keyboard = generate_keyboard(track, artist, source_url, source)
         results.append(
-            InlineQueryResultArticle(
-                id=f"{label.lower()}-{hash(text)}",
-                title=f"{artist} — {track}",
-                description=build_inline_description(album, label, source),
-                thumb_url=image_url,
-                input_message_content=InputTextMessageContent(
-                    message_text=caption,
-                    parse_mode="Markdown",
-                ),
-                reply_markup=keyboard,
+            build_inline_track_result(
+                result_id=f"{label.lower()}-{hash(text)}",
+                artist=artist,
+                track=track,
+                album=album,
+                image_url=image_url,
+                label=label,
+                release_date=release_date,
+                source=source,
+                source_url=source_url,
             )
         )
     else:
         items = await search_spotify_tracks(text)
         if not items:
-            await query.answer([], cache_time=1, is_personal=True)
+            await query.answer(
+                build_inline_search_shortcuts(text),
+                cache_time=1,
+                is_personal=True,
+            )
             return
 
         for item in items:
@@ -198,21 +273,21 @@ async def inline_handler(query: InlineQuery):
             release_date = item.get("album", {}).get("release_date", "Unknown Date")
             source = "spotify"
 
-            caption = build_caption(artist, track, album, release_date, label, source)
-            keyboard = generate_keyboard(track, artist, spotify_url, source)
             results.append(
-                InlineQueryResultArticle(
-                    id=track_id,
-                    title=f"{artist} — {track}",
-                    description=build_inline_description(album, label, source),
-                    thumb_url=image_url,
-                    input_message_content=InputTextMessageContent(
-                        message_text=caption,
-                        parse_mode="Markdown",
-                    ),
-                    reply_markup=keyboard,
+                build_inline_track_result(
+                    result_id=track_id,
+                    artist=artist,
+                    track=track,
+                    album=album,
+                    image_url=image_url,
+                    label=label,
+                    release_date=release_date,
+                    source=source,
+                    source_url=spotify_url,
                 )
             )
+
+        results.extend(build_inline_search_shortcuts(text))
 
     await query.answer(results, cache_time=1, is_personal=True)
 

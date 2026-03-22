@@ -10,6 +10,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
 import bot
 
+build_inline_search_shortcuts = bot.build_inline_search_shortcuts
+build_inline_track_result = bot.build_inline_track_result
 build_unsupported_url_message = bot.build_unsupported_url_message
 clean_soundcloud_title = bot.clean_soundcloud_title
 clean_youtube_music_artist = bot.clean_youtube_music_artist
@@ -496,6 +498,34 @@ def test_chat_feedback_rules(monkeypatch):
     assert should_send_error_feedback(group_chat) is False
     assert should_send_error_feedback(channel_chat) is False
     assert should_auto_delete(channel_chat) is True
+
+
+def test_build_inline_search_shortcuts_returns_multiple_sources():
+    results = build_inline_search_shortcuts("lane 8 woman")
+
+    assert len(results) == 4
+    titles = [result.title for result in results]
+    assert "🎵 YouTube Music search" in titles
+    assert "▶️ YouTube search" in titles
+    assert "☁️ SoundCloud search" in titles
+    assert "🎶 Яндекс.Музыка search" in titles
+
+
+def test_build_inline_track_result_uses_source_metadata():
+    result = build_inline_track_result(
+        result_id="spotify-1",
+        artist="Lane 8",
+        track="Woman",
+        album="Childish",
+        image_url="https://example.com/image.jpg",
+        label="This Never Happened",
+        release_date="2022",
+        source="spotify",
+        source_url="https://open.spotify.com/track/example",
+    )
+
+    assert result.title == "Lane 8 — Woman"
+    assert result.description == "Childish | This Never Happened"
 
 
 def test_generate_keyboard_does_not_duplicate_apple_music_button():

@@ -46,6 +46,8 @@ from app.sources import (
 from app.telegram_app import (
     auto_delete_messages,
     bot,
+    build_inline_search_shortcuts,
+    build_inline_track_result,
     dp,
     generate_keyboard,
     handle_channel_music_post,
@@ -63,6 +65,8 @@ __all__ = [
     "aiohttp",
     "auto_delete_messages",
     "bot",
+    "build_inline_search_shortcuts",
+    "build_inline_track_result",
     "build_caption",
     "build_inline_description",
     "build_unsupported_url_message",
