@@ -91,7 +91,12 @@ def is_suspicious_yandex_label(label: str) -> bool:
 def should_show_label(source: str, label: str) -> bool:
     if not label:
         return False
-    if source == "apple_music" and label == "Apple Music":
+    if source in {"apple_music", "soundcloud", "youtube", "youtube_music"} and label in {
+        "Apple Music",
+        "SoundCloud",
+        "YouTube",
+        "YouTube Music",
+    }:
         return False
     if source != "yandex_music":
         return True

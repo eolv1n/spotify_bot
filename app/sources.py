@@ -115,7 +115,7 @@ def classify_music_url(url: str) -> dict:
         if "shorts" in path_parts:
             return {"service": "youtube", "kind": "short", "supported": False}
         if parsed.path == "/watch" and "v" in query:
-            return {"service": "youtube", "kind": "video", "supported": False}
+            return {"service": "youtube", "kind": "video", "supported": True}
         return {"service": "youtube", "kind": "page", "supported": False}
 
     return {"service": None, "kind": None, "supported": False}
@@ -623,6 +623,7 @@ def clean_soundcloud_title(title: str) -> str:
 def clean_youtube_music_artist(value: str) -> str:
     cleaned = (value or "").strip()
     cleaned = re.sub(r"\s*-\s*Topic\s*$", "", cleaned, flags=re.I)
+    cleaned = re.sub(r"\s*VEVO\s*$", "", cleaned, flags=re.I)
     return cleaned or "Unknown Artist"
 
 
@@ -653,6 +654,55 @@ async def parse_youtube_music(url: str):
         label="YouTube Music",
         release_date="Unknown Date",
         source="youtube_music",
+        source_url=url,
+    )
+
+
+def is_probable_youtube_track(title: str, author_name: str) -> bool:
+    normalized_title = (title or "").lower()
+    normalized_author = (author_name or "").lower()
+    track_markers = (
+        " - ",
+        "official audio",
+        "lyric",
+        "visualizer",
+        "topic",
+    )
+    return any(marker in normalized_title for marker in track_markers) or "topic" in normalized_author
+
+
+async def parse_youtube(url: str):
+    oembed_url = f"https://www.youtube.com/oembed?url={url}&format=json"
+    async with aiohttp.ClientSession() as session:
+        async with session.get(oembed_url, headers={"User-Agent": "Mozilla/5.0"}) as resp:
+            if resp.status != 200:
+                return None
+            data = await resp.json()
+
+    raw_title = data.get("title", "Unknown Track")
+    raw_author = data.get("author_name", "Unknown Artist")
+    image_url = data.get("thumbnail_url")
+
+    if not is_probable_youtube_track(raw_title, raw_author):
+        return None
+
+    cleaned_title = clean_youtube_music_track(raw_title)
+    if " - " in cleaned_title:
+        artist, track = cleaned_title.split(" - ", 1)
+        artist = artist.strip()
+        track = track.strip()
+    else:
+        artist = clean_youtube_music_artist(raw_author)
+        track = cleaned_title
+
+    return build_track_payload(
+        artist=artist,
+        track=track,
+        album="Unknown Album",
+        image=image_url,
+        label="YouTube",
+        release_date="Unknown Date",
+        source="youtube",
         source_url=url,
     )
 
@@ -732,6 +782,8 @@ async def parse_music_url(url: str):
         parsed = await parse_soundcloud(url)
     elif classification["service"] == "youtube_music":
         parsed = await parse_youtube_music(url)
+    elif classification["service"] == "youtube":
+        parsed = await parse_youtube(url)
     elif classification["service"] == "spotify":
         track_id = extract_track_id(url)
         if track_id:

@@ -26,6 +26,7 @@ parse_apple_music = bot.parse_apple_music
 parse_yandex_music = bot.parse_yandex_music
 parse_music_url = bot.parse_music_url
 parse_soundcloud = bot.parse_soundcloud
+parse_youtube = bot.parse_youtube
 parse_youtube_music = bot.parse_youtube_music
 set_cached_track = bot.set_cached_track
 
@@ -190,6 +191,41 @@ async def test_parse_youtube_music_from_oembed():
 
 
 @pytest.mark.asyncio
+async def test_parse_youtube_parses_probable_track_upload():
+    with patch('app.sources.aiohttp.ClientSession.get') as mock_get:
+        mock_resp = AsyncMock()
+        mock_resp.status = 200
+        mock_resp.json = AsyncMock(return_value={
+            "title": "Lane 8 - Woman",
+            "author_name": "Lane 8",
+            "thumbnail_url": "https://i.ytimg.com/vi/example/hqdefault.jpg",
+        })
+        mock_get.return_value.__aenter__.return_value = mock_resp
+
+        result = await parse_youtube("https://www.youtube.com/watch?v=abc123")
+        assert result["artist"] == "Lane 8"
+        assert result["track"] == "Woman"
+        assert result["label"] == "YouTube"
+        assert result["source"] == "youtube"
+
+
+@pytest.mark.asyncio
+async def test_parse_youtube_ignores_non_music_video():
+    with patch('app.sources.aiohttp.ClientSession.get') as mock_get:
+        mock_resp = AsyncMock()
+        mock_resp.status = 200
+        mock_resp.json = AsyncMock(return_value={
+            "title": "My Vacation In Spain",
+            "author_name": "Travel Vlog Channel",
+            "thumbnail_url": "https://i.ytimg.com/vi/example/hqdefault.jpg",
+        })
+        mock_get.return_value.__aenter__.return_value = mock_resp
+
+        result = await parse_youtube("https://www.youtube.com/watch?v=abc123")
+        assert result is None
+
+
+@pytest.mark.asyncio
 async def test_parse_yandex_music():
     """Тест парсинга Яндекс.Музыки через yandex-music client."""
     album = type(
@@ -295,11 +331,6 @@ def test_classify_music_url_recognizes_unsupported_types():
         "kind": "album",
         "supported": False,
     }
-    assert classify_music_url("https://www.youtube.com/watch?v=abcdef") == {
-        "service": "youtube",
-        "kind": "video",
-        "supported": False,
-    }
     assert classify_music_url("https://on.soundcloud.com/abc123") == {
         "service": "soundcloud_shortlink",
         "kind": "shortlink",
@@ -309,6 +340,14 @@ def test_classify_music_url_recognizes_unsupported_types():
         "service": "youtube_music",
         "kind": "playlist",
         "supported": False,
+    }
+
+
+def test_classify_music_url_recognizes_youtube_track_candidates():
+    assert classify_music_url("https://www.youtube.com/watch?v=abcdef") == {
+        "service": "youtube",
+        "kind": "video",
+        "supported": True,
     }
 
 
@@ -335,6 +374,40 @@ def test_clean_soundcloud_title_removes_editorial_noise():
 def test_clean_youtube_music_helpers():
     assert clean_youtube_music_artist("Nox Vahn - Topic") == "Nox Vahn"
     assert clean_youtube_music_track("Follow Me (Official Audio)") == "Follow Me"
+
+
+def test_build_caption_hides_generic_soundcloud_label():
+    caption = build_caption(
+        "Artist",
+        "Track",
+        "Album",
+        "01.01.2024",
+        "SoundCloud",
+        "soundcloud",
+    )
+    assert "Label:" not in caption
+
+
+def test_build_caption_hides_generic_youtube_labels():
+    youtube_caption = build_caption(
+        "Artist",
+        "Track",
+        "Album",
+        "01.01.2024",
+        "YouTube",
+        "youtube",
+    )
+    youtube_music_caption = build_caption(
+        "Artist",
+        "Track",
+        "Album",
+        "01.01.2024",
+        "YouTube Music",
+        "youtube_music",
+    )
+
+    assert "Label:" not in youtube_caption
+    assert "Label:" not in youtube_music_caption
 
 
 def test_is_suspicious_yandex_label():

@@ -44,6 +44,7 @@ def generate_keyboard(track, artist, source_url, source="spotify"):
         "apple_music": "🍎 Apple Music",
         "yandex_music": "🎶 Яндекс.Музыка",
         "soundcloud": "☁️ SoundCloud",
+        "youtube": "▶️ YouTube",
         "youtube_music": "🎵 YouTube Music",
     }
     source_button_label = source_button_labels.get(source, "🔗 Открыть источник")
@@ -235,13 +236,14 @@ async def handle_music_link(message: types.Message):
     if classification.get("service"):
         if not classification.get("supported"):
             unsupported_message = build_unsupported_url_message(classification)
-            if unsupported_message:
+            if unsupported_message and message.chat.type == "private":
                 await message.reply(unsupported_message)
             return
 
         track_info = await parse_music_url(url)
         if not track_info:
-            await message.reply("Не удалось получить информацию о треке 😢")
+            if message.chat.type == "private":
+                await message.reply("Не удалось получить информацию о треке 😢")
             return
 
         artist = track_info["artist"]
