@@ -95,4 +95,6 @@ jobs:
           key: ${{ secrets.SSH_KEY }}
           script: |
             cd ~/spotify_bot
+            git fetch origin main
+            git reset --hard origin/main
             ./deploy.sh
