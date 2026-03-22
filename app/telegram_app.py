@@ -17,11 +17,10 @@ from app.formatting import build_caption, build_inline_description
 from app.sources import (
     build_unsupported_url_message,
     classify_music_url,
-    get_album_label,
     parse_music_url,
     resolve_redirect_url,
     resolve_spotify_link,
-    search_spotify_tracks,
+    search_multisource_tracks,
 )
 
 bot = Bot(token=TELEGRAM_TOKEN)
@@ -252,7 +251,7 @@ async def inline_handler(query: InlineQuery):
             )
         )
     else:
-        items = await search_spotify_tracks(text)
+        items = await search_multisource_tracks(text)
         if not items:
             await query.answer(
                 build_inline_search_shortcuts(text),
@@ -262,32 +261,22 @@ async def inline_handler(query: InlineQuery):
             return
 
         for item in items:
-            track_id = item.get("id")
-            track = item.get("name", "Unknown")
-            artist = ", ".join(a["name"] for a in item.get("artists", [])) or "Unknown"
-            album = item.get("album", {}).get("name", "")
-            image_url = item.get("album", {}).get("images", [{}])[0].get("url")
-            spotify_url = item.get("external_urls", {}).get("spotify", "")
-            album_id = item.get("album", {}).get("id")
-            label = item.get("album", {}).get("label") or await get_album_label(album_id)
-            release_date = item.get("album", {}).get("release_date", "Unknown Date")
-            source = "spotify"
-
             results.append(
                 build_inline_track_result(
-                    result_id=track_id,
-                    artist=artist,
-                    track=track,
-                    album=album,
-                    image_url=image_url,
-                    label=label,
-                    release_date=release_date,
-                    source=source,
-                    source_url=spotify_url,
+                    result_id=f"{item['source']}-{hash((item['artist'], item['track'], item['source_url']))}",
+                    artist=item["artist"],
+                    track=item["track"],
+                    album=item["album"],
+                    image_url=item["image"],
+                    label=item["label"],
+                    release_date=item["release_date"],
+                    source=item["source"],
+                    source_url=item["source_url"],
                 )
             )
 
-        results.extend(build_inline_search_shortcuts(text))
+        if len(items) < 6:
+            results.extend(build_inline_search_shortcuts(text))
 
     await query.answer(results, cache_time=1, is_personal=True)
 

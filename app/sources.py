@@ -43,6 +43,10 @@ SOUNDCLOUD_NON_TRACK_PREFIXES = {
 }
 
 
+def query_contains_cyrillic(query: str) -> bool:
+    return bool(re.search(r"[а-яё]", query.lower()))
+
+
 def classify_music_url(url: str) -> dict:
     parsed = urlparse(url)
     host = parsed.netloc.lower().removeprefix("www.")
@@ -772,6 +776,105 @@ async def search_spotify_tracks(query: str):
                 return []
             data = await resp.json()
             return data.get("tracks", {}).get("items", []) or []
+
+
+async def search_spotify_track_payloads(query: str, limit: int = 3):
+    items = await search_spotify_tracks(query)
+    payloads = []
+    for item in items[:limit]:
+        track = item.get("name", "Unknown")
+        artist = ", ".join(a["name"] for a in item.get("artists", [])) or "Unknown"
+        album = item.get("album", {}).get("name", "Unknown Album")
+        image_url = item.get("album", {}).get("images", [{}])[0].get("url")
+        spotify_url = item.get("external_urls", {}).get("spotify", "")
+        album_id = item.get("album", {}).get("id")
+        label = item.get("album", {}).get("label") or await get_album_label(album_id)
+        release_date = format_date_ru(item.get("album", {}).get("release_date", "Unknown Date"))
+
+        payloads.append(
+            build_track_payload(
+                artist=artist,
+                track=track,
+                album=album,
+                image=image_url,
+                label=label,
+                release_date=release_date,
+                source="spotify",
+                source_url=spotify_url,
+            )
+        )
+    return payloads
+
+
+async def search_apple_music_tracks(query: str, limit: int = 3):
+    params = {"term": query, "entity": "song", "limit": str(limit)}
+    async with aiohttp.ClientSession() as session:
+        async with session.get(
+            "https://itunes.apple.com/search",
+            params=params,
+            headers={"User-Agent": "Mozilla/5.0"},
+        ) as resp:
+            if resp.status != 200:
+                return []
+            data = await resp.json()
+
+    payloads = []
+    for item in data.get("results", [])[:limit]:
+        payloads.append(
+            build_track_payload(
+                artist=item.get("artistName", "Unknown Artist"),
+                track=item.get("trackName", "Unknown Track"),
+                album=item.get("collectionName", "Unknown Album"),
+                image=item.get("artworkUrl100"),
+                label="Apple Music",
+                release_date=format_date_ru(item.get("releaseDate", "Unknown Date")),
+                source="apple_music",
+                source_url=item.get("trackViewUrl") or item.get("collectionViewUrl") or "",
+            )
+        )
+    return payloads
+
+
+async def search_yandex_music_tracks(query: str, limit: int = 3):
+    try:
+        client = get_yandex_client()
+        search_result = await asyncio.to_thread(client.search, query)
+    except Exception as exc:
+        logging.warning("Не удалось выполнить поиск Яндекс.Музыки для %s: %s", query, exc)
+        return []
+
+    tracks = (getattr(getattr(search_result, "tracks", None), "results", None) or [])[:limit]
+    payloads = []
+    for track in tracks:
+        album = next(iter(track.albums or []), None)
+        album_id = getattr(album, "id", None)
+        track_id = getattr(track, "id", None)
+        if album_id and track_id:
+            source_url = f"https://music.yandex.ru/album/{album_id}/track/{track_id}"
+        elif track_id:
+            source_url = f"https://music.yandex.ru/track/{track_id}"
+        else:
+            source_url = "https://music.yandex.ru"
+        payloads.append(build_yandex_payload(track, source_url))
+    return payloads
+
+
+async def search_multisource_tracks(query: str, limit_per_source: int = 3):
+    spotify_results, apple_results, yandex_results = await asyncio.gather(
+        search_spotify_track_payloads(query, limit_per_source),
+        search_apple_music_tracks(query, limit_per_source),
+        search_yandex_music_tracks(query, limit_per_source),
+    )
+
+    if query_contains_cyrillic(query):
+        ordered_sources = [spotify_results, yandex_results, apple_results]
+    else:
+        ordered_sources = [spotify_results, apple_results, yandex_results]
+
+    results = []
+    for source_results in ordered_sources:
+        results.extend(source_results)
+    return results
 
 
 async def parse_music_url(url: str):

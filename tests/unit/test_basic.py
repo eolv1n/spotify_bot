@@ -21,6 +21,8 @@ extract_yandex_track_ref = bot.extract_yandex_track_ref
 extract_apple_music_song_url = bot.extract_apple_music_song_url
 build_caption = bot.build_caption
 build_inline_description = bot.build_inline_description
+build_inline_search_shortcuts = bot.build_inline_search_shortcuts
+build_inline_track_result = bot.build_inline_track_result
 generate_keyboard = bot.generate_keyboard
 get_cached_track = bot.get_cached_track
 handle_channel_music_post = bot.handle_channel_music_post
@@ -29,9 +31,11 @@ parse_apple_music = bot.parse_apple_music
 parse_yandex_music = bot.parse_yandex_music
 parse_music_url = bot.parse_music_url
 process_music_message = bot.process_music_message
+query_contains_cyrillic = bot.query_contains_cyrillic
 parse_soundcloud = bot.parse_soundcloud
 parse_youtube = bot.parse_youtube
 parse_youtube_music = bot.parse_youtube_music
+search_multisource_tracks = bot.search_multisource_tracks
 set_cached_track = bot.set_cached_track
 should_auto_delete = bot.should_auto_delete
 should_send_error_feedback = bot.should_send_error_feedback
@@ -526,6 +530,37 @@ def test_build_inline_track_result_uses_source_metadata():
 
     assert result.title == "Lane 8 — Woman"
     assert result.description == "Childish | This Never Happened"
+
+
+def test_query_contains_cyrillic():
+    assert query_contains_cyrillic("Луна Бутылочка") is True
+    assert query_contains_cyrillic("Lane 8 Woman") is False
+
+
+@pytest.mark.asyncio
+async def test_search_multisource_tracks_prioritizes_russian_queries():
+    spotify_payloads = [{"source": "spotify", "artist": "A", "track": "T", "album": "", "image": None, "label": "", "release_date": "", "source_url": "s"}]
+    yandex_payloads = [{"source": "yandex_music", "artist": "B", "track": "U", "album": "", "image": None, "label": "", "release_date": "", "source_url": "y"}]
+    apple_payloads = [{"source": "apple_music", "artist": "C", "track": "V", "album": "", "image": None, "label": "", "release_date": "", "source_url": "a"}]
+
+    with patch("app.sources.search_spotify_track_payloads", new_callable=AsyncMock, return_value=spotify_payloads), \
+         patch("app.sources.search_yandex_music_tracks", new_callable=AsyncMock, return_value=yandex_payloads), \
+         patch("app.sources.search_apple_music_tracks", new_callable=AsyncMock, return_value=apple_payloads):
+        results = await search_multisource_tracks("Луна Бутылочка")
+        assert [item["source"] for item in results] == ["spotify", "yandex_music", "apple_music"]
+
+
+@pytest.mark.asyncio
+async def test_search_multisource_tracks_prioritizes_foreign_queries():
+    spotify_payloads = [{"source": "spotify", "artist": "A", "track": "T", "album": "", "image": None, "label": "", "release_date": "", "source_url": "s"}]
+    yandex_payloads = [{"source": "yandex_music", "artist": "B", "track": "U", "album": "", "image": None, "label": "", "release_date": "", "source_url": "y"}]
+    apple_payloads = [{"source": "apple_music", "artist": "C", "track": "V", "album": "", "image": None, "label": "", "release_date": "", "source_url": "a"}]
+
+    with patch("app.sources.search_spotify_track_payloads", new_callable=AsyncMock, return_value=spotify_payloads), \
+         patch("app.sources.search_yandex_music_tracks", new_callable=AsyncMock, return_value=yandex_payloads), \
+         patch("app.sources.search_apple_music_tracks", new_callable=AsyncMock, return_value=apple_payloads):
+        results = await search_multisource_tracks("Lane 8 Woman")
+        assert [item["source"] for item in results] == ["spotify", "apple_music", "yandex_music"]
 
 
 def test_generate_keyboard_does_not_duplicate_apple_music_button():
