@@ -459,6 +459,23 @@ def test_build_inline_description_hides_generic_apple_music_label():
     assert build_inline_description("Album", "Apple Music", "apple_music") == "Album"
 
 
+def test_build_caption_hides_unknown_album_and_date():
+    caption = build_caption(
+        "Artist",
+        "Track",
+        "Unknown Album",
+        "Unknown Date",
+        "YouTube Music",
+        "youtube_music",
+    )
+    assert "Unknown Album" not in caption
+    assert "Release date:" not in caption
+
+
+def test_build_inline_description_hides_unknown_album():
+    assert build_inline_description("Unknown Album", "YouTube Music", "youtube_music") == ""
+
+
 def test_generate_keyboard_does_not_duplicate_apple_music_button():
     keyboard = generate_keyboard(
         "Track",

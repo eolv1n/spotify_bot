@@ -103,6 +103,14 @@ def should_show_label(source: str, label: str) -> bool:
     return label != "Яндекс.Музыка" and not is_suspicious_yandex_label(label)
 
 
+def should_show_album(album: str) -> bool:
+    return bool(album and album != "Unknown Album")
+
+
+def should_show_release_date(release_date: str) -> bool:
+    return bool(release_date and release_date != "Unknown Date")
+
+
 def build_caption(
     artist: str,
     track: str,
@@ -111,18 +119,21 @@ def build_caption(
     label: str,
     source: str,
 ) -> str:
-    lines = [
-        f"`{artist} — {track}`",
-        f"***{album}***",
-        "",
-        f"Release date: {release_date}",
-    ]
+    lines = [f"`{artist} — {track}`"]
+    if should_show_album(album):
+        lines.extend([f"***{album}***", ""])
+    if should_show_release_date(release_date):
+        lines.append(f"Release date: {release_date}")
     if should_show_label(source, label):
         lines.append(f"Label: {label}")
     return "\n".join(lines)
 
 
 def build_inline_description(album: str, label: str, source: str) -> str:
+    if not should_show_album(album):
+        if should_show_label(source, label):
+            return label
+        return ""
     if should_show_label(source, label):
         return f"{album} | {label}"
     return album
