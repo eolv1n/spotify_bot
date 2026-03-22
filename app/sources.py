@@ -23,7 +23,13 @@ from app.formatting import (
 _yandex_client = None
 _yandex_client_lock = threading.Lock()
 
-SUPPORTED_TRACK_SERVICES = {"spotify", "apple_music", "yandex_music", "soundcloud"}
+SUPPORTED_TRACK_SERVICES = {
+    "spotify",
+    "apple_music",
+    "yandex_music",
+    "soundcloud",
+    "youtube_music",
+}
 SOUNDCLOUD_NON_TRACK_PREFIXES = {
     "charts",
     "discover",
@@ -98,6 +104,12 @@ def classify_music_url(url: str) -> dict:
     if host in {"youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be"}:
         if host == "youtu.be":
             return {"service": "youtube", "kind": "video", "supported": False}
+        if host == "music.youtube.com":
+            if "list" in query or "playlist" in path_parts:
+                return {"service": "youtube_music", "kind": "playlist", "supported": False}
+            if parsed.path == "/watch" and "v" in query:
+                return {"service": "youtube_music", "kind": "track", "supported": True}
+            return {"service": "youtube_music", "kind": "page", "supported": False}
         if "list" in query or "playlist" in path_parts:
             return {"service": "youtube", "kind": "playlist", "supported": False}
         if "shorts" in path_parts:
@@ -122,6 +134,7 @@ def build_unsupported_url_message(classification: dict) -> str | None:
         "yandex_music": "Яндекс.Музыка",
         "soundcloud": "SoundCloud",
         "youtube": "YouTube",
+        "youtube_music": "YouTube Music",
     }
     kind_names = {
         "album": "альбом",
@@ -140,6 +153,12 @@ def build_unsupported_url_message(classification: dict) -> str | None:
         return (
             f"Распознал {service_name}, но пока умею работать только с музыкальными "
             f"стриминг-ссылками, а не с типом `{kind_name}` 😕"
+        )
+
+    if service == "youtube_music":
+        return (
+            f"Распознал {service_name}, но пока умею разбирать только ссылки на отдельные "
+            f"треки, а не `{kind_name}` 😕"
         )
 
     return (
@@ -601,6 +620,43 @@ def clean_soundcloud_title(title: str) -> str:
     return cleaned
 
 
+def clean_youtube_music_artist(value: str) -> str:
+    cleaned = (value or "").strip()
+    cleaned = re.sub(r"\s*-\s*Topic\s*$", "", cleaned, flags=re.I)
+    return cleaned or "Unknown Artist"
+
+
+def clean_youtube_music_track(value: str) -> str:
+    cleaned = (value or "").strip()
+    cleaned = re.sub(r"\s*\((official|official audio|official video|lyric video)[^)]+\)\s*$", "", cleaned, flags=re.I)
+    cleaned = re.sub(r"\s*\[(official|official audio|official video|lyrics?)[^\]]+\]\s*$", "", cleaned, flags=re.I)
+    return cleaned or "Unknown Track"
+
+
+async def parse_youtube_music(url: str):
+    oembed_url = f"https://www.youtube.com/oembed?url={url}&format=json"
+    async with aiohttp.ClientSession() as session:
+        async with session.get(oembed_url, headers={"User-Agent": "Mozilla/5.0"}) as resp:
+            if resp.status != 200:
+                return None
+            data = await resp.json()
+
+    artist = clean_youtube_music_artist(data.get("author_name", "Unknown Artist"))
+    track = clean_youtube_music_track(data.get("title", "Unknown Track"))
+    image_url = data.get("thumbnail_url")
+
+    return build_track_payload(
+        artist=artist,
+        track=track,
+        album="Unknown Album",
+        image=image_url,
+        label="YouTube Music",
+        release_date="Unknown Date",
+        source="youtube_music",
+        source_url=url,
+    )
+
+
 async def get_track_info(track_id: str):
     token = await get_spotify_token()
     headers = {"Authorization": f"Bearer {token}"}
@@ -674,6 +730,8 @@ async def parse_music_url(url: str):
         parsed = await parse_yandex_music(url)
     elif classification["service"] == "soundcloud":
         parsed = await parse_soundcloud(url)
+    elif classification["service"] == "youtube_music":
+        parsed = await parse_youtube_music(url)
     elif classification["service"] == "spotify":
         track_id = extract_track_id(url)
         if track_id:

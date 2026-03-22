@@ -44,6 +44,7 @@ def generate_keyboard(track, artist, source_url, source="spotify"):
         "apple_music": "🍎 Apple Music",
         "yandex_music": "🎶 Яндекс.Музыка",
         "soundcloud": "☁️ SoundCloud",
+        "youtube_music": "🎵 YouTube Music",
     }
     source_button_label = source_button_labels.get(source, "🔗 Открыть источник")
     music_buttons = [

@@ -12,6 +12,8 @@ import bot
 
 build_unsupported_url_message = bot.build_unsupported_url_message
 clean_soundcloud_title = bot.clean_soundcloud_title
+clean_youtube_music_artist = bot.clean_youtube_music_artist
+clean_youtube_music_track = bot.clean_youtube_music_track
 classify_music_url = bot.classify_music_url
 extract_yandex_track_ref = bot.extract_yandex_track_ref
 extract_apple_music_song_url = bot.extract_apple_music_song_url
@@ -24,6 +26,7 @@ parse_apple_music = bot.parse_apple_music
 parse_yandex_music = bot.parse_yandex_music
 parse_music_url = bot.parse_music_url
 parse_soundcloud = bot.parse_soundcloud
+parse_youtube_music = bot.parse_youtube_music
 set_cached_track = bot.set_cached_track
 
 def test_math_addition():
@@ -168,6 +171,25 @@ async def test_parse_soundcloud_cleans_premiere_title():
 
 
 @pytest.mark.asyncio
+async def test_parse_youtube_music_from_oembed():
+    with patch('app.sources.aiohttp.ClientSession.get') as mock_get:
+        mock_resp = AsyncMock()
+        mock_resp.status = 200
+        mock_resp.json = AsyncMock(return_value={
+            "title": "Follow Me",
+            "author_name": "Nox Vahn - Topic",
+            "thumbnail_url": "https://i.ytimg.com/vi/example/hqdefault.jpg",
+        })
+        mock_get.return_value.__aenter__.return_value = mock_resp
+
+        result = await parse_youtube_music("https://music.youtube.com/watch?v=abc123")
+        assert result["artist"] == "Nox Vahn"
+        assert result["track"] == "Follow Me"
+        assert result["label"] == "YouTube Music"
+        assert result["source"] == "youtube_music"
+
+
+@pytest.mark.asyncio
 async def test_parse_yandex_music():
     """Тест парсинга Яндекс.Музыки через yandex-music client."""
     album = type(
@@ -255,6 +277,11 @@ def test_classify_music_url_recognizes_supported_track_links():
         "kind": "track",
         "supported": True,
     }
+    assert classify_music_url("https://music.youtube.com/watch?v=abc123") == {
+        "service": "youtube_music",
+        "kind": "track",
+        "supported": True,
+    }
 
 
 def test_classify_music_url_recognizes_unsupported_types():
@@ -278,6 +305,11 @@ def test_classify_music_url_recognizes_unsupported_types():
         "kind": "shortlink",
         "supported": True,
     }
+    assert classify_music_url("https://music.youtube.com/playlist?list=abc123") == {
+        "service": "youtube_music",
+        "kind": "playlist",
+        "supported": False,
+    }
 
 
 def test_build_unsupported_url_message_is_human_readable():
@@ -298,6 +330,11 @@ def test_clean_soundcloud_title_removes_editorial_noise():
         clean_soundcloud_title("PREMIERE: Jonas Saalbach - A Piece Of The Sun [Radikon]")
         == "Jonas Saalbach - A Piece Of The Sun"
     )
+
+
+def test_clean_youtube_music_helpers():
+    assert clean_youtube_music_artist("Nox Vahn - Topic") == "Nox Vahn"
+    assert clean_youtube_music_track("Follow Me (Official Audio)") == "Follow Me"
 
 
 def test_is_suspicious_yandex_label():
