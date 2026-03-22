@@ -21,14 +21,18 @@ build_caption = bot.build_caption
 build_inline_description = bot.build_inline_description
 generate_keyboard = bot.generate_keyboard
 get_cached_track = bot.get_cached_track
+handle_channel_music_post = bot.handle_channel_music_post
 is_suspicious_yandex_label = bot.is_suspicious_yandex_label
 parse_apple_music = bot.parse_apple_music
 parse_yandex_music = bot.parse_yandex_music
 parse_music_url = bot.parse_music_url
+process_music_message = bot.process_music_message
 parse_soundcloud = bot.parse_soundcloud
 parse_youtube = bot.parse_youtube
 parse_youtube_music = bot.parse_youtube_music
 set_cached_track = bot.set_cached_track
+should_auto_delete = bot.should_auto_delete
+should_send_error_feedback = bot.should_send_error_feedback
 
 def test_math_addition():
     """Пример самого простого юнит-теста."""
@@ -480,6 +484,17 @@ def test_build_caption_hides_unknown_album_and_date():
 
 def test_build_inline_description_hides_unknown_album():
     assert build_inline_description("Unknown Album", "YouTube Music", "youtube_music") == ""
+
+
+def test_chat_feedback_rules():
+    private_chat = type("Chat", (), {"type": "private"})()
+    group_chat = type("Chat", (), {"type": "group"})()
+    channel_chat = type("Chat", (), {"type": "channel"})()
+
+    assert should_send_error_feedback(private_chat) is True
+    assert should_send_error_feedback(group_chat) is False
+    assert should_send_error_feedback(channel_chat) is False
+    assert should_auto_delete(channel_chat) is False
 
 
 def test_generate_keyboard_does_not_duplicate_apple_music_button():

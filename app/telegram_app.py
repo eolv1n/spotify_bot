@@ -99,6 +99,10 @@ def should_auto_delete(chat: types.Chat) -> bool:
     return AUTO_DELETE_DELAY > 0 and chat.type in {"group", "supergroup"}
 
 
+def should_send_error_feedback(chat: types.Chat) -> bool:
+    return chat.type == "private"
+
+
 async def auto_delete_messages(delay: int, messages: list[types.Message]):
     await asyncio.sleep(delay)
     for msg in messages:
@@ -213,8 +217,7 @@ async def inline_handler(query: InlineQuery):
     await query.answer(results, cache_time=1, is_personal=True)
 
 
-@dp.message()
-async def handle_music_link(message: types.Message):
+async def process_music_message(message: types.Message):
     if not message.text:
         return
 
@@ -223,26 +226,28 @@ async def handle_music_link(message: types.Message):
     if classification.get("service") == "spotify_shortlink":
         url = await resolve_spotify_link(url)
         if not url:
-            await message.reply("Не удалось раскрыть короткую ссылку 😕")
+            if should_send_error_feedback(message.chat):
+                await message.reply("Не удалось раскрыть короткую ссылку 😕")
             return
         classification = classify_music_url(url)
     elif classification.get("service") == "soundcloud_shortlink":
         url = await resolve_redirect_url(url)
         if not url:
-            await message.reply("Не удалось раскрыть короткую ссылку SoundCloud 😕")
+            if should_send_error_feedback(message.chat):
+                await message.reply("Не удалось раскрыть короткую ссылку SoundCloud 😕")
             return
         classification = classify_music_url(url)
 
     if classification.get("service"):
         if not classification.get("supported"):
             unsupported_message = build_unsupported_url_message(classification)
-            if unsupported_message and message.chat.type == "private":
+            if unsupported_message and should_send_error_feedback(message.chat):
                 await message.reply(unsupported_message)
             return
 
         track_info = await parse_music_url(url)
         if not track_info:
-            if message.chat.type == "private":
+            if should_send_error_feedback(message.chat):
                 await message.reply("Не удалось получить информацию о треке 😢")
             return
 
@@ -276,6 +281,16 @@ async def handle_music_link(message: types.Message):
 
         if should_auto_delete(message.chat) and sent_message:
             asyncio.create_task(auto_delete_messages(AUTO_DELETE_DELAY, [message]))
+
+
+@dp.message()
+async def handle_music_link(message: types.Message):
+    await process_music_message(message)
+
+
+@dp.channel_post()
+async def handle_channel_music_post(message: types.Message):
+    await process_music_message(message)
 
 
 async def on_startup():
