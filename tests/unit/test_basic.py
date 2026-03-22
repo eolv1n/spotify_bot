@@ -14,6 +14,7 @@ extract_yandex_track_ref = bot.extract_yandex_track_ref
 extract_apple_music_song_url = bot.extract_apple_music_song_url
 build_caption = bot.build_caption
 build_inline_description = bot.build_inline_description
+generate_keyboard = bot.generate_keyboard
 get_cached_track = bot.get_cached_track
 is_suspicious_yandex_label = bot.is_suspicious_yandex_label
 parse_apple_music = bot.parse_apple_music
@@ -257,6 +258,41 @@ def test_build_inline_description_hides_generic_yandex_label():
 
 def test_build_inline_description_hides_generic_apple_music_label():
     assert build_inline_description("Album", "Apple Music", "apple_music") == "Album"
+
+
+def test_generate_keyboard_does_not_duplicate_apple_music_button():
+    keyboard = generate_keyboard(
+        "Track",
+        "Artist",
+        "https://music.apple.com/us/song/example/123",
+        "apple_music",
+    )
+    button_texts = [
+        button.text
+        for row in keyboard.inline_keyboard
+        for button in row
+    ]
+
+    assert button_texts.count("🍎 Apple Music") == 1
+    assert button_texts[0] == "🍎 Apple Music"
+    assert "🎧 Spotify" not in button_texts or button_texts.count("🎧 Spotify") == 0
+
+
+def test_generate_keyboard_does_not_duplicate_soundcloud_button():
+    keyboard = generate_keyboard(
+        "Track",
+        "Artist",
+        "https://soundcloud.com/artist/track",
+        "soundcloud",
+    )
+    button_texts = [
+        button.text
+        for row in keyboard.inline_keyboard
+        for button in row
+    ]
+
+    assert button_texts.count("☁️ SoundCloud") == 1
+    assert button_texts[0] == "☁️ SoundCloud"
 
 
 def test_build_inline_description_keeps_normal_label():

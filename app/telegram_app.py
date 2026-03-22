@@ -27,43 +27,52 @@ dp = Dispatcher()
 
 def generate_keyboard(track, artist, source_url, source="spotify"):
     query_encoded = quote(f"{track} {artist}")
-    source_button_label = {
+    source_button_labels = {
         "spotify": "🎧 Spotify",
         "apple_music": "🍎 Apple Music",
         "yandex_music": "🎶 Яндекс.Музыка",
         "soundcloud": "☁️ SoundCloud",
-    }.get(source, "🔗 Открыть источник")
+    }
+    source_button_label = source_button_labels.get(source, "🔗 Открыть источник")
+    music_buttons = [
+        ("vk", "🎵 ВКонтакте", "https://vk.com/audio"),
+        (
+            "yandex_music",
+            "🎶 Яндекс.Музыка",
+            f"https://music.yandex.ru/search?text={query_encoded}",
+        ),
+        (
+            "soundcloud",
+            "☁️ SoundCloud",
+            f"https://soundcloud.com/search?q={query_encoded}",
+        ),
+        (
+            "apple_music",
+            "🍎 Apple Music",
+            f"https://music.apple.com/search?term={query_encoded}",
+        ),
+        (
+            "youtube",
+            "▶️ YouTube",
+            f"https://www.youtube.com/results?search_query={query_encoded}",
+        ),
+        (
+            "youtube_music",
+            "🎵 YouTube Music",
+            f"https://music.youtube.com/search?q={query_encoded}",
+        ),
+    ]
+    filtered_buttons = [
+        InlineKeyboardButton(text=text, url=url)
+        for button_source, text, url in music_buttons
+        if button_source != source
+    ]
+    keyboard_rows = [[InlineKeyboardButton(text=source_button_label, url=source_url)]]
+    for index in range(0, len(filtered_buttons), 2):
+        keyboard_rows.append(filtered_buttons[index:index + 2])
+
     return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text=source_button_label, url=source_url)],
-            [
-                InlineKeyboardButton(text="🎵 ВКонтакте", url="https://vk.com/audio"),
-                InlineKeyboardButton(
-                    text="🎶 Яндекс.Музыка",
-                    url=f"https://music.yandex.ru/search?text={query_encoded}",
-                ),
-            ],
-            [
-                InlineKeyboardButton(
-                    text="☁️ SoundCloud",
-                    url=f"https://soundcloud.com/search?q={query_encoded}",
-                ),
-                InlineKeyboardButton(
-                    text="🍎 Apple Music",
-                    url=f"https://music.apple.com/search?term={query_encoded}",
-                ),
-            ],
-            [
-                InlineKeyboardButton(
-                    text="▶️ YouTube",
-                    url=f"https://www.youtube.com/results?search_query={query_encoded}",
-                ),
-                InlineKeyboardButton(
-                    text="🎵 YouTube Music",
-                    url=f"https://music.youtube.com/search?q={query_encoded}",
-                ),
-            ],
-        ]
+        inline_keyboard=keyboard_rows
     )
 
 
