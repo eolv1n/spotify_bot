@@ -11,6 +11,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 import bot
 
 extract_yandex_track_ref = bot.extract_yandex_track_ref
+build_caption = bot.build_caption
+build_inline_description = bot.build_inline_description
 get_cached_track = bot.get_cached_track
 is_suspicious_yandex_label = bot.is_suspicious_yandex_label
 parse_apple_music = bot.parse_apple_music
@@ -153,6 +155,38 @@ def test_extract_yandex_track_ref():
 def test_is_suspicious_yandex_label():
     assert is_suspicious_yandex_label("Креатив-ИН") is True
     assert is_suspicious_yandex_label("Anjunadeep") is False
+
+
+def test_build_caption_hides_generic_yandex_label():
+    caption = build_caption(
+        "Artist",
+        "Track",
+        "Album",
+        "01.01.2024",
+        "Яндекс.Музыка",
+        "yandex_music",
+    )
+    assert "Label:" not in caption
+
+
+def test_build_caption_hides_suspicious_yandex_label():
+    caption = build_caption(
+        "Artist",
+        "Track",
+        "Album",
+        "01.01.2024",
+        "Креатив-ИН",
+        "yandex_music",
+    )
+    assert "Label:" not in caption
+
+
+def test_build_inline_description_hides_generic_yandex_label():
+    assert build_inline_description("Album", "Яндекс.Музыка", "yandex_music") == "Album"
+
+
+def test_build_inline_description_keeps_normal_label():
+    assert build_inline_description("Album", "Anjunadeep", "yandex_music") == "Album | Anjunadeep"
 
 
 @pytest.mark.asyncio

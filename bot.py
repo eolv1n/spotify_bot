@@ -224,6 +224,32 @@ def is_suspicious_yandex_label(label: str) -> bool:
     return any(part in normalized for part in suspicious_parts)
 
 
+def should_show_label(source: str, label: str) -> bool:
+    if not label:
+        return False
+    if source != "yandex_music":
+        return True
+    return label != "Яндекс.Музыка" and not is_suspicious_yandex_label(label)
+
+
+def build_caption(artist: str, track: str, album: str, release_date: str, label: str, source: str) -> str:
+    lines = [
+        f"`{artist} — {track}`",
+        f"***{album}***",
+        "",
+        f"Release date: {release_date}",
+    ]
+    if should_show_label(source, label):
+        lines.append(f"Label: {label}")
+    return "\n".join(lines)
+
+
+def build_inline_description(album: str, label: str, source: str) -> str:
+    if should_show_label(source, label):
+        return f"{album} | {label}"
+    return album
+
+
 def build_yandex_payload(track, url: str):
     artist_names = ", ".join(
         artist.name for artist in (track.artists or []) if getattr(artist, "name", None)
@@ -733,12 +759,7 @@ async def inline_handler(query: InlineQuery):
         source = track_info.get("source", "spotify")
         source_url = track_info.get("source_url", text)
 
-        caption = (
-            f"`{artist} — {track}`\n"
-            f"***{album}***\n\n"
-            f"Release date: {release_date}\n"
-            f"Label: {label}"
-        )
+        caption = build_caption(artist, track, album, release_date, label, source)
 
         keyboard = generate_keyboard(track, artist, source_url, source)
 
@@ -746,7 +767,7 @@ async def inline_handler(query: InlineQuery):
             InlineQueryResultArticle(
                 id=f"{label.lower()}-{hash(text)}",
                 title=f"{artist} — {track}",
-                description=f"{album} | {label}",
+                description=build_inline_description(album, label, source),
                 thumb_url=image_url,
                 input_message_content=InputTextMessageContent(
                     message_text=caption, parse_mode="Markdown"
@@ -776,13 +797,9 @@ async def inline_handler(query: InlineQuery):
             release_date = format_date_ru(
                 item.get("album", {}).get("release_date", "Unknown Date")
             )
+            source = "spotify"
 
-            caption = (
-                f"`{artist} — {track}`\n"
-                f"***{album}***\n\n"
-                f"Release date: {release_date}\n"
-                f"Label: {label}"
-            )
+            caption = build_caption(artist, track, album, release_date, label, source)
 
             keyboard = generate_keyboard(track, artist, spotify_url, "spotify")
 
@@ -790,7 +807,7 @@ async def inline_handler(query: InlineQuery):
                 InlineQueryResultArticle(
                     id=track_id,
                     title=f"{artist} — {track}",
-                    description=f"{album} | {label}",
+                    description=build_inline_description(album, label, source),
                     thumb_url=image_url,
                     input_message_content=InputTextMessageContent(
                         message_text=caption, parse_mode="Markdown"
@@ -833,12 +850,7 @@ async def handle_music_link(message: types.Message):
         source = track_info.get("source", "spotify")
         source_url = track_info.get("source_url", url)
 
-        caption = (
-            f"`{artist} — {track}`\n"
-            f"***{album}***\n\n"
-            f"Release date: {release_date}\n"
-            f"Label: {label}"
-        )
+        caption = build_caption(artist, track, album, release_date, label, source)
 
         keyboard = generate_keyboard(track, artist, source_url, source)
 
