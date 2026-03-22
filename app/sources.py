@@ -816,7 +816,11 @@ async def search_apple_music_tracks(query: str, limit: int = 3):
         ) as resp:
             if resp.status != 200:
                 return []
-            data = await resp.json()
+            try:
+                data = await resp.json(content_type=None)
+            except Exception:
+                raw_text = await resp.text()
+                data = json.loads(raw_text)
 
     payloads = []
     for item in data.get("results", [])[:limit]:
