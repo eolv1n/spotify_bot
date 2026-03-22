@@ -6,7 +6,9 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
 from bot import (
+    extract_yandex_track_ref,
     get_cached_track,
+    is_suspicious_yandex_label,
     parse_apple_music,
     parse_yandex_music,
     parse_music_url,
@@ -80,71 +82,206 @@ async def test_parse_soundcloud():
 
 @pytest.mark.asyncio
 async def test_parse_yandex_music():
-    """Тест парсинга Яндекс.Музыки через встроенный JSON."""
-    with patch('bot.aiohttp.ClientSession.get') as mock_get:
-        mock_resp = AsyncMock()
-        mock_resp.status = 200
-        mock_resp.text = AsyncMock(return_value='''
-        <html>
-        <body>
-        <script>
-        window.__DATA__ = {
-          "entities": {
-            "tracks": {
-              "123": {
-                "title": "Track Name",
-                "coverUri": "avatars.yandex.net/get-music-content/12345/%%",
-                "artists": [{"name": "Artist One"}, {"name": "Artist Two"}],
-                "albums": [{"title": "Album Name", "releaseDate": "2024-01-01"}]
-              }
-            }
-          }
-        };
-        </script>
-        </body>
-        </html>
-        ''')
-        mock_get.return_value.__aenter__.return_value = mock_resp
+    """Тест парсинга Яндекс.Музыки через yandex-music client."""
+    album = type(
+        "Album",
+        (),
+        {
+            "title": "Album Name",
+            "year": 2024,
+            "release_date": "2024-01-01T00:00:00+03:00",
+            "labels": [{"name": "Anjunadeep"}],
+        },
+    )()
+    artist_one = type("Artist", (), {"name": "Artist One"})()
+    artist_two = type("Artist", (), {"name": "Artist Two"})()
+    track = type(
+        "Track",
+        (),
+        {
+            "title": "Track Name",
+            "cover_uri": "avatars.yandex.net/get-music-content/12345/%%",
+            "artists": [artist_one, artist_two],
+            "albums": [album],
+        },
+    )()
 
+    client = type("Client", (), {"tracks": lambda self, refs: [track]})()
+    with patch("bot.get_yandex_client", return_value=client):
         result = await parse_yandex_music("https://music.yandex.ru/album/1/track/123")
         assert result["artist"] == "Artist One, Artist Two"
         assert result["track"] == "Track Name"
         assert result["album"] == "Album Name"
-        assert result["release_date"] == "2024-01-01"
+        assert result["release_date"] == "01.01.2024"
+        assert result["label"] == "Anjunadeep"
         assert result["image"] == "https://avatars.yandex.net/get-music-content/12345/400x400"
 
 
 @pytest.mark.asyncio
 async def test_parse_yandex_music_with_empty_albums():
     """Пустой список альбомов не должен ронять парсер."""
-    with patch('bot.aiohttp.ClientSession.get') as mock_get:
-        mock_resp = AsyncMock()
-        mock_resp.status = 200
-        mock_resp.text = AsyncMock(return_value='''
-        <html>
-        <body>
-        <script>
-        window.__DATA__ = {
-          "entities": {
-            "tracks": {
-              "123": {
-                "title": "Track Name",
-                "artists": [{"name": "Artist One"}],
-                "albums": []
-              }
-            }
-          }
-        };
-        </script>
-        </body>
-        </html>
-        ''')
-        mock_get.return_value.__aenter__.return_value = mock_resp
+    artist = type("Artist", (), {"name": "Artist One"})()
+    track = type(
+        "Track",
+        (),
+        {
+            "title": "Track Name",
+            "cover_uri": None,
+            "artists": [artist],
+            "albums": [],
+        },
+    )()
 
+    client = type("Client", (), {"tracks": lambda self, refs: [track]})()
+    with patch("bot.get_yandex_client", return_value=client):
         result = await parse_yandex_music("https://music.yandex.ru/album/1/track/123")
         assert result["artist"] == "Artist One"
         assert result["album"] == "Unknown Album"
         assert result["release_date"] == "Unknown Date"
+        assert result["label"] == "Яндекс.Музыка"
+
+
+def test_extract_yandex_track_ref():
+    assert extract_yandex_track_ref("https://music.yandex.ru/album/1/track/123") == "123:1"
+    assert extract_yandex_track_ref("https://music.yandex.ru/track/123") == "123"
+    assert extract_yandex_track_ref("https://example.com") is None
+
+
+def test_is_suspicious_yandex_label():
+    assert is_suspicious_yandex_label("Креатив-ИН") is True
+    assert is_suspicious_yandex_label("Anjunadeep") is False
+
+
+@pytest.mark.asyncio
+async def test_parse_yandex_music_prefers_canonical_candidate():
+    base_album = type(
+        "Album",
+        (),
+        {
+            "title": "Prospect EP",
+            "year": 2019,
+            "release_date": "2019-10-01T00:00:00+03:00",
+            "labels": [{"name": "Креатив-ИН"}],
+        },
+    )()
+    canonical_album = type(
+        "Album",
+        (),
+        {
+            "title": "Prospect EP",
+            "year": 2019,
+            "release_date": "2019-05-28T00:00:00+03:00",
+            "labels": [{"name": "Anjunadeep"}],
+        },
+    )()
+
+    base_track = type(
+        "Track",
+        (),
+        {
+            "title": "Follow Me",
+            "cover_uri": "avatars.yandex.net/get-music-content/base/%%",
+            "artists": [type("Artist", (), {"name": "Nox Vahn & Marsh feat. Mimi Page"})()],
+            "albums": [base_album],
+        },
+    )()
+    canonical_track = type(
+        "Track",
+        (),
+        {
+            "title": "Follow Me",
+            "cover_uri": "avatars.yandex.net/get-music-content/canonical/%%",
+            "artists": [
+                type("Artist", (), {"name": "Nox Vahn"})(),
+                type("Artist", (), {"name": "Marsh"})(),
+                type("Artist", (), {"name": "Mimi Page"})(),
+            ],
+            "albums": [canonical_album],
+        },
+    )()
+
+    tracks_result = type("TracksResult", (), {"results": [canonical_track]})()
+    search_result = type("SearchResult", (), {"tracks": tracks_result})()
+    client = type(
+        "Client",
+        (),
+        {
+            "tracks": lambda self, refs: [base_track],
+            "search": lambda self, query: search_result,
+        },
+    )()
+
+    with patch("bot.get_yandex_client", return_value=client):
+        result = await parse_yandex_music("https://music.yandex.ru/album/1/track/123")
+        assert result["artist"] == "Nox Vahn, Marsh, Mimi Page"
+        assert result["album"] == "Prospect EP"
+        assert result["label"] == "Anjunadeep"
+        assert result["release_date"] == "28.05.2019"
+
+
+@pytest.mark.asyncio
+async def test_parse_yandex_music_keeps_specific_base_label_when_refined_is_generic():
+    base_album = type(
+        "Album",
+        (),
+        {
+            "title": "Prospect EP",
+            "year": 2019,
+            "release_date": "2019-10-01T00:00:00+03:00",
+            "labels": [{"name": "Креатив-ИН"}],
+        },
+    )()
+    refined_album = type(
+        "Album",
+        (),
+        {
+            "title": "Prospect EP",
+            "year": None,
+            "release_date": None,
+            "labels": [],
+        },
+    )()
+
+    base_track = type(
+        "Track",
+        (),
+        {
+            "title": "Follow Me",
+            "cover_uri": "avatars.yandex.net/get-music-content/base/%%",
+            "artists": [type("Artist", (), {"name": "Nox Vahn & Marsh feat. Mimi Page"})()],
+            "albums": [base_album],
+        },
+    )()
+    refined_track = type(
+        "Track",
+        (),
+        {
+            "title": "Follow Me",
+            "cover_uri": "avatars.yandex.net/get-music-content/refined/%%",
+            "artists": [
+                type("Artist", (), {"name": "Nox Vahn"})(),
+                type("Artist", (), {"name": "Marsh"})(),
+                type("Artist", (), {"name": "Mimi Page"})(),
+            ],
+            "albums": [refined_album],
+        },
+    )()
+
+    tracks_result = type("TracksResult", (), {"results": [refined_track]})()
+    search_result = type("SearchResult", (), {"tracks": tracks_result})()
+    client = type(
+        "Client",
+        (),
+        {
+            "tracks": lambda self, refs: [base_track],
+            "search": lambda self, query: search_result,
+        },
+    )()
+
+    with patch("bot.get_yandex_client", return_value=client):
+        result = await parse_yandex_music("https://music.yandex.ru/album/1/track/123")
+        assert result["label"] == "Креатив-ИН"
+        assert result["release_date"] == "01.10.2019"
 
 
 @pytest.mark.asyncio

@@ -1,153 +1,215 @@
-# 🎧 Spotify Bot — DEV / PROD Workflow Guide
+# DEV Setup Guide
 
-## ⚙️ Основные ветки
+Этот документ описывает локальную разработку, тестирование, ветвление и деплой для `Music Info Bot`.
 
-| Ветка | Назначение |
-|--------|------------|
-| **`main`** | Боевая версия бота (продакшен). Работает на сервере через `systemd`. |
-| **`dev`** | Тестовая ветка для разработки и проверок новых фич локально. |
+## Стек разработки
 
----
+- `Python 3`
+- `venv`
+- `aiogram 3`
+- `aiohttp`
+- `beautifulsoup4`
+- `yandex-music`
+- `sqlite`
+- `pytest`, `pytest-asyncio`, `pytest-cov`
+- `flake8`
+- `GitHub Actions`
+- `Docker`
+- `systemd`
 
-## 🧑‍💻 Локальная разработка
+## Структура окружений
 
-### 1️⃣ Клонировать репозиторий
+| Окружение | Назначение |
+|---|---|
+| `main` | актуальная стабильная ветка |
+| feature-ветки | доработка отдельных задач |
+| локальный запуск | ручная проверка в Telegram |
+| VPS/systemd | продакшен или постоянный тестовый стенд |
+
+## 1. Клонирование проекта
+
 ```bash
 git clone git@github.com:eolv1n/spotify_bot.git
 cd spotify_bot
 ```
 
-### 2️⃣ Переключиться на ветку `dev`
-```bash
-git checkout dev
-```
+## 2. Виртуальное окружение
 
-### 3️⃣ Активировать виртуальное окружение
-```bash
-source venv/bin/activate
-```
+Если `venv` ещё нет:
 
-Если окружения нет:
 ```bash
 python3 -m venv venv
+```
+
+Активация:
+
+```bash
 source venv/bin/activate
+```
+
+Установка зависимостей:
+
+```bash
 pip install -r requirements.txt
+pip install -r requirements-dev.txt
 ```
 
----
+## 3. Настройка `.env`
 
-### 4️⃣ Настроить `.env`
-Создай или обнови файл `.env` в корне проекта:
+Создай файл `.env` в корне проекта:
+
+```env
+TELEGRAM_TOKEN=your_test_bot_token
+SPOTIFY_CLIENT_ID=your_spotify_client_id
+SPOTIFY_CLIENT_SECRET=your_spotify_client_secret
+AUTO_DELETE_DELAY=0
+CACHE_DB_PATH=cache/music_cache.sqlite3
+CACHE_TTL_SECONDS=43200
+```
+
+### Где взять Spotify ключи
+
+1. Открой `https://developer.spotify.com/dashboard`
+2. Создай приложение
+3. Возьми `Client ID`
+4. Открой `View client secret` и забери `Client Secret`
+
+### Важно
+
+- не коммить `.env`
+- не публикуй токены в README, issue и PR
+- если секрет случайно утёк, перевыпусти его
+
+## 4. Локальный запуск бота
 
 ```bash
-TELEGRAM_TOKEN=твой_токен_бота
-SPOTIFY_CLIENT_ID=spotify_client_id
-SPOTIFY_CLIENT_SECRET=spotify_client_secret
-AUTO_DELETE_DELAY=10
+venv/bin/python bot.py
 ```
 
-- `AUTO_DELETE_DELAY` — время (в секундах), через которое бот удаляет сообщения в группах.  
-  Если не нужно автоудаление — поставь `0`.
+После запуска можно писать тестовому боту в Telegram и отправлять ссылки:
 
----
+- `Spotify`
+- `Apple Music`
+- `SoundCloud`
+- `Яндекс.Музыка`
 
-### 5️⃣ Запуск локально
+## 5. Локальные тесты
+
+Полный прогон:
+
 ```bash
-python3 bot.py
+venv/bin/python -m pytest -q
 ```
 
-Бот запустится в тестовом режиме, можно проверять функционал прямо в Telegram.
+Проверка синтаксиса:
 
----
+```bash
+python3 -m py_compile bot.py
+```
 
-## 🚀 После доработки
+Линтер:
 
-### 6️⃣ Проверить и закоммитить изменения
+```bash
+venv/bin/python -m flake8
+```
+
+## 6. Smoke-test сценарий
+
+Минимальный smoke-test перед пушем:
+
+1. Запустить бота локально
+2. Проверить `/help`
+3. Отправить Spotify-ссылку
+4. Отправить Apple Music-ссылку
+5. Отправить SoundCloud-ссылку
+6. Отправить ссылку Яндекс.Музыки
+7. Проверить inline-поиск по тексту
+8. Проверить, что бот не падает на невалидной ссылке
+
+## 7. Рабочий git-flow
+
+Создать ветку под задачу:
+
+```bash
+git switch -c feature/my-change
+```
+
+Проверить статус:
+
 ```bash
 git status
+```
+
+Закоммитить изменения:
+
+```bash
 git add .
-git commit -m "описание новой фичи"
+git commit -m "feat: short description"
 ```
 
-### 7️⃣ Отправить на GitHub
+Подтянуть свежий `main` перед финализацией:
+
 ```bash
-git push origin dev
+git fetch origin
+git rebase origin/main
 ```
 
-Теперь фича доступна в ветке `dev` на GitHub.
+## 8. GitHub Actions
 
----
+CI сейчас используется для:
 
-## 🧪 Проверка фичи
+- запуска тестов
+- расчёта coverage
+- публикации артефактов отчётов
+- базовой проверки качества кода
 
-- Протестируй новую функцию локально.
-- Убедись, что всё работает корректно, нет ошибок и бот не падает.
-- После теста можно переходить к релизу.
-
----
-
-## 🔀 Релиз (слияние с main)
+Перед пушем локально желательно повторить хотя бы:
 
 ```bash
-git checkout main
-git pull origin main
-git merge dev
-git push origin main
+venv/bin/python -m pytest -q
 ```
 
----
+## 9. Docker и прод
 
-## 🏗️ Обновление продакшена (на сервере)
+В проекте есть:
+
+- [`Dockerfile`](/home/eolv1n/projects/spotify_bot/Dockerfile)
+- [`docker-compose.yml`](/home/eolv1n/projects/spotify_bot/docker-compose.yml)
+- [`deploy.sh`](/home/eolv1n/projects/spotify_bot/deploy.sh)
+
+Если деплой идёт через сервер:
 
 ```bash
-ssh eolv1n@vm4349106
+ssh <server>
 cd ~/spotify_bot
 git pull origin main
 sudo systemctl restart spotify_bot
 sudo systemctl status spotify_bot -l
 ```
 
----
+## 10. Отладка на сервере
 
-## 🧹 Если что-то пошло не так
+Проверить статус сервиса:
 
-Посмотреть ошибки:
+```bash
+sudo systemctl status spotify_bot -l
+```
+
+Посмотреть последние ошибки:
+
 ```bash
 sudo tail -n 50 /var/log/spotify_bot_error.log
 ```
 
-Откатиться на предыдущий коммит:
+Если нужен ручной health-check:
+
 ```bash
-git log --oneline
-git checkout <commit_id>
-sudo systemctl restart spotify_bot
+bash server_check.sh
 ```
 
----
+## 11. Что стоит улучшить дальше
 
-## 💡 Удобные алиасы для быстрого деплоя
-
-Добавь в `~/.bashrc`:
-```bash
-alias bot-pull="cd ~/spotify_bot && git pull origin main && sudo systemctl restart spotify_bot"
-alias bot-log="sudo tail -n 40 /var/log/spotify_bot.log"
-```
-
-Теперь деплой можно сделать одной командой:
-```bash
-bot-pull
-```
-
----
-
-## 🧾 Кратко
-
-| Этап | Команда | Где |
-|------|----------|-----|
-| Разработка | `git checkout dev` | локально |
-| Тест | `python3 bot.py` | локально |
-| Пуш в dev | `git push origin dev` | локально |
-| Мерж в main | `git merge dev && git push origin main` | локально |
-| Деплой | `git pull origin main && systemctl restart spotify_bot` | сервер |
-
----
+- вынести source adapters из `bot.py` в отдельные модули
+- улучшить парсинг `Apple Music` и `SoundCloud`
+- добавить `.env.example`
+- расширить интеграционные и e2e-тесты

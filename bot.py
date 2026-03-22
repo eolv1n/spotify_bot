@@ -3,6 +3,7 @@ import json
 import time
 import sqlite3
 import logging
+import threading
 import aiohttp
 import asyncio
 import os
@@ -35,6 +36,7 @@ from aiogram.filters import Command
 from dotenv import load_dotenv
 from datetime import datetime
 from bs4 import BeautifulSoup
+from yandex_music import Client as YandexMusicClient
 
 # === Настройка логов ===
 logging.basicConfig(level=logging.INFO)
@@ -83,6 +85,8 @@ if not TELEGRAM_TOKEN or not SPOTIFY_CLIENT_ID or not SPOTIFY_CLIENT_SECRET:
 # === Создаем бота и диспетчер ===
 bot = Bot(token=TELEGRAM_TOKEN)
 dp = Dispatcher()
+_yandex_client = None
+_yandex_client_lock = threading.Lock()
 
 def init_cache_db():
     cache_dir = os.path.dirname(CACHE_DB_PATH)
@@ -178,6 +182,185 @@ def build_track_payload(
     }
 
 
+def normalize_text(value: str) -> str:
+    normalized = (value or "").lower().replace("ё", "е")
+    normalized = re.sub(r"\b(feat|featuring|ft)\b", " ", normalized)
+    normalized = re.sub(r"[^a-z0-9а-я]+", " ", normalized)
+    return " ".join(normalized.split())
+
+
+def tokenize_text(value: str) -> set[str]:
+    return set(normalize_text(value).split())
+
+
+def extract_yandex_label_name(album) -> str:
+    label = "Яндекс.Музыка"
+    labels = getattr(album, "labels", None) or []
+    first_label = next(iter(labels), None)
+    if isinstance(first_label, dict):
+        return first_label.get("name") or label
+    if first_label is not None:
+        return getattr(first_label, "name", None) or label
+    return label
+
+
+def is_suspicious_yandex_label(label: str) -> bool:
+    normalized = normalize_text(label)
+    suspicious_parts = {
+        "креатив",
+        "creative",
+        "distribution",
+        "distro",
+        "aggregator",
+        "freshtunes",
+        "fresh tunes",
+        "one rpm",
+        "onerpm",
+        "believe",
+        "orchard",
+        "symphonic",
+        "tunecore",
+    }
+    return any(part in normalized for part in suspicious_parts)
+
+
+def build_yandex_payload(track, url: str):
+    artist_names = ", ".join(
+        artist.name for artist in (track.artists or []) if getattr(artist, "name", None)
+    ) or "Unknown Artist"
+    track_name = track.title or "Unknown"
+
+    album = next(iter(track.albums or []), None)
+    album_name = getattr(album, "title", None) or "Unknown Album"
+    raw_release_date = (
+        getattr(album, "release_date", None)
+        or getattr(album, "original_release_year", None)
+        or getattr(album, "year", None)
+        or "Unknown Date"
+    )
+    release_date = format_date_ru(str(raw_release_date))
+    label = extract_yandex_label_name(album)
+
+    image_url = None
+    cover_uri = getattr(track, "cover_uri", None)
+    if cover_uri:
+        image_url = f"https://{cover_uri.replace('%%', '400x400')}"
+
+    return build_track_payload(
+        artist=artist_names,
+        track=track_name,
+        album=album_name,
+        image=image_url,
+        label=label,
+        release_date=release_date,
+        source="yandex_music",
+        source_url=url,
+    )
+
+
+def score_yandex_candidate(candidate_track, expected_track: str, expected_artist: str, expected_album: str) -> int:
+    score = 0
+    candidate_title = getattr(candidate_track, "title", "") or ""
+    candidate_artist = ", ".join(
+        artist.name for artist in (candidate_track.artists or []) if getattr(artist, "name", None)
+    )
+    candidate_album = getattr(next(iter(candidate_track.albums or []), None), "title", "") or ""
+    candidate_label = extract_yandex_label_name(next(iter(candidate_track.albums or []), None))
+
+    if normalize_text(candidate_title) == normalize_text(expected_track):
+        score += 100
+
+    expected_artist_tokens = tokenize_text(expected_artist)
+    candidate_artist_tokens = tokenize_text(candidate_artist)
+    if expected_artist_tokens and candidate_artist_tokens:
+        overlap = len(expected_artist_tokens & candidate_artist_tokens)
+        score += int((overlap / len(expected_artist_tokens)) * 50)
+
+    if expected_album != "Unknown Album" and normalize_text(candidate_album) == normalize_text(expected_album):
+        score += 20
+
+    score += min(len(candidate_track.artists or []), 3) * 5
+
+    if candidate_label and candidate_label != "Яндекс.Музыка":
+        score += 10
+    if is_suspicious_yandex_label(candidate_label):
+        score -= 25
+
+    album = next(iter(candidate_track.albums or []), None)
+    if getattr(album, "release_date", None):
+        score += 8
+    elif getattr(album, "year", None):
+        score += 4
+
+    return score
+
+
+async def refine_yandex_payload(url: str, base_track, base_payload: dict):
+    current_label = base_payload.get("label", "Яндекс.Музыка")
+    artist_field = base_payload.get("artist", "")
+    should_refine = (
+        is_suspicious_yandex_label(current_label)
+        or ("&" in artist_field and len(base_track.artists or []) <= 1)
+    )
+    if not should_refine:
+        return base_payload
+
+    query = f"{base_payload.get('artist', '')} {base_payload.get('track', '')}".strip()
+    if not query:
+        return base_payload
+
+    try:
+        client = get_yandex_client()
+        search_result = await asyncio.to_thread(client.search, query)
+    except Exception as exc:
+        logging.warning("Не удалось выполнить поиск Яндекс.Музыки для уточнения %s: %s", url, exc)
+        return base_payload
+
+    candidates = (getattr(getattr(search_result, "tracks", None), "results", None) or [])[:10]
+    if not candidates:
+        return base_payload
+
+    current_score = score_yandex_candidate(
+        base_track,
+        expected_track=base_payload.get("track", ""),
+        expected_artist=base_payload.get("artist", ""),
+        expected_album=base_payload.get("album", ""),
+    )
+    best_track = base_track
+    best_score = current_score
+
+    for candidate in candidates:
+        score = score_yandex_candidate(
+            candidate,
+            expected_track=base_payload.get("track", ""),
+            expected_artist=base_payload.get("artist", ""),
+            expected_album=base_payload.get("album", ""),
+        )
+        if score > best_score:
+            best_score = score
+            best_track = candidate
+
+    if best_track is base_track or best_score < current_score + 15:
+        return base_payload
+
+    refined_payload = build_yandex_payload(best_track, url)
+    refined_label = refined_payload.get("label", "")
+    base_label = base_payload.get("label", "")
+    refined_date = refined_payload.get("release_date", "")
+    base_date = base_payload.get("release_date", "")
+
+    if is_suspicious_yandex_label(refined_label):
+        return base_payload
+
+    # Не даем эвристике ухудшить уже конкретные данные до общей заглушки.
+    if refined_label == "Яндекс.Музыка" and base_label not in {"", "Яндекс.Музыка"}:
+        refined_payload["label"] = base_label
+    if refined_date == "Unknown Date" and base_date not in {"", "Unknown Date"}:
+        refined_payload["release_date"] = base_date
+
+    return refined_payload
+
+
 def extract_json_from_script(script_text: str):
     start = script_text.find("{")
     end = script_text.rfind("}") + 1
@@ -191,6 +374,27 @@ def extract_json_from_script(script_text: str):
 
 
 init_cache_db()
+
+
+def get_yandex_client():
+    global _yandex_client
+    if _yandex_client is None:
+        with _yandex_client_lock:
+            if _yandex_client is None:
+                _yandex_client = YandexMusicClient().init()
+    return _yandex_client
+
+
+def extract_yandex_track_ref(url: str):
+    track_match = re.search(r"/track/(\d+)", url)
+    album_match = re.search(r"/album/(\d+)", url)
+
+    if not track_match:
+        return None
+
+    track_id = track_match.group(1)
+    album_id = album_match.group(1) if album_match else None
+    return f"{track_id}:{album_id}" if album_id else track_id
 # === /help ===
 @dp.message(Command("help"))
 @dp.message(F.text.lower().startswith("/help"))
@@ -228,8 +432,11 @@ def extract_track_id(spotify_url: str):
 
 # === Функиця формата даты ===
 def format_date_ru(date_str: str) -> str:
-    """Преобразует дату Spotify (YYYY-MM-DD или YYYY-MM) в формат DD.MM.YYYY"""
+    """Преобразует дату в формат DD.MM.YYYY, MM.YYYY или YYYY."""
     try:
+        if "T" in date_str:
+            dt = datetime.fromisoformat(date_str)
+            return dt.strftime("%d.%m.%Y")
         if len(date_str) == 10:  # YYYY-MM-DD
             dt = datetime.strptime(date_str, "%Y-%m-%d")
             return dt.strftime("%d.%m.%Y")
@@ -311,59 +518,23 @@ async def parse_apple_music(url: str):
 
 # === Парсинг Яндекс.Музыка ===
 async def parse_yandex_music(url: str):
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url, headers={"User-Agent": "Mozilla/5.0"}) as resp:
-            if resp.status != 200:
-                return None
-            html = await resp.text()
-            soup = BeautifulSoup(html, "html.parser")
+    track_ref = extract_yandex_track_ref(url)
+    if not track_ref:
+        return None
 
-            script_text = None
-            for script in soup.find_all("script"):
-                text = script.string or script.get_text()
-                if text and "window.__DATA__" in text:
-                    script_text = text
-                    break
+    try:
+        client = get_yandex_client()
+        tracks = await asyncio.to_thread(client.tracks, [track_ref])
+    except Exception as exc:
+        logging.warning("Не удалось получить данные Яндекс.Музыки для %s: %s", url, exc)
+        return None
 
-            if not script_text:
-                return None
+    track = tracks[0] if tracks else None
+    if not track:
+        return None
 
-            data = extract_json_from_script(script_text)
-            if not data:
-                return None
-
-            track_data = data.get("entities", {}).get("tracks", {})
-            if not track_data:
-                return None
-
-            track_id = list(track_data.keys())[0]
-            track_info = track_data[track_id]
-
-            artist_names = ", ".join(
-                artist.get("name", "Unknown Artist")
-                for artist in track_info.get("artists", [])
-                if artist.get("name")
-            ) or "Unknown Artist"
-            track_name = track_info.get("title", "Unknown")
-
-            album_info = next(iter(track_info.get("albums") or []), {})
-            album_name = album_info.get("title", "Unknown Album")
-            release_date = album_info.get("releaseDate", "Unknown Date")
-
-            image_url = track_info.get("coverUri", "")
-            if image_url:
-                image_url = f"https://{image_url.replace('%%', '400x400')}"
-
-            return build_track_payload(
-                artist=artist_names,
-                track=track_name,
-                album=album_name,
-                image=image_url or None,
-                label="Яндекс.Музыка",
-                release_date=release_date,
-                source="yandex_music",
-                source_url=url,
-            )
+    base_payload = build_yandex_payload(track, url)
+    return await refine_yandex_payload(url, track, base_payload)
 
 # === Парсинг SoundCloud ===
 async def parse_soundcloud(url: str):
