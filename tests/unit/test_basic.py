@@ -275,7 +275,7 @@ def test_generate_keyboard_does_not_duplicate_apple_music_button():
 
     assert button_texts.count("🍎 Apple Music") == 1
     assert button_texts[0] == "🍎 Apple Music"
-    assert "🎧 Spotify" not in button_texts or button_texts.count("🎧 Spotify") == 0
+    assert button_texts.count("🎧 Spotify") == 1
 
 
 def test_generate_keyboard_does_not_duplicate_soundcloud_button():
@@ -293,6 +293,24 @@ def test_generate_keyboard_does_not_duplicate_soundcloud_button():
 
     assert button_texts.count("☁️ SoundCloud") == 1
     assert button_texts[0] == "☁️ SoundCloud"
+    assert button_texts.count("🎧 Spotify") == 1
+
+
+def test_generate_keyboard_does_not_duplicate_spotify_button():
+    keyboard = generate_keyboard(
+        "Track",
+        "Artist",
+        "https://open.spotify.com/track/example",
+        "spotify",
+    )
+    button_texts = [
+        button.text
+        for row in keyboard.inline_keyboard
+        for button in row
+    ]
+
+    assert button_texts.count("🎧 Spotify") == 1
+    assert button_texts[0] == "🎧 Spotify"
 
 
 def test_build_inline_description_keeps_normal_label():

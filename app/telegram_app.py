@@ -35,6 +35,11 @@ def generate_keyboard(track, artist, source_url, source="spotify"):
     }
     source_button_label = source_button_labels.get(source, "🔗 Открыть источник")
     music_buttons = [
+        (
+            "spotify",
+            "🎧 Spotify",
+            f"https://open.spotify.com/search/{query_encoded}",
+        ),
         ("vk", "🎵 ВКонтакте", "https://vk.com/audio"),
         (
             "yandex_music",
