@@ -17,6 +17,20 @@
 - `Docker`
 - `systemd`
 
+## Структура проекта
+
+Сейчас проект уже не монолитный и разделён на модули:
+
+- [`bot.py`](/home/eolv1n/projects/spotify_bot/bot.py) — совместимая точка входа
+- [`app/config.py`](/home/eolv1n/projects/spotify_bot/app/config.py) — переменные окружения и runtime-конфиг
+- [`app/cache.py`](/home/eolv1n/projects/spotify_bot/app/cache.py) — `sqlite`-кеш
+- [`app/formatting.py`](/home/eolv1n/projects/spotify_bot/app/formatting.py) — форматирование и текстовые представления
+- [`app/sources.py`](/home/eolv1n/projects/spotify_bot/app/sources.py) — интеграции и парсеры источников
+- [`app/telegram_app.py`](/home/eolv1n/projects/spotify_bot/app/telegram_app.py) — Telegram handlers и orchestration
+- [`tests/unit/`](/home/eolv1n/projects/spotify_bot/tests/unit) — юнит-тесты
+- [`tests/integration/`](/home/eolv1n/projects/spotify_bot/tests/integration) — интеграционные проверки
+- [`tests/e2e/`](/home/eolv1n/projects/spotify_bot/tests/e2e) — smoke/e2e сценарии
+
 ## Структура окружений
 
 | Окружение | Назначение |
@@ -104,7 +118,7 @@ venv/bin/python -m pytest -q
 Проверка синтаксиса:
 
 ```bash
-python3 -m py_compile bot.py
+python3 -m py_compile bot.py app/*.py
 ```
 
 Линтер:
@@ -166,7 +180,14 @@ CI сейчас используется для:
 Перед пушем локально желательно повторить хотя бы:
 
 ```bash
+venv/bin/python -m flake8
 venv/bin/python -m pytest -q
+```
+
+Локальную тестовую и runtime-грязь можно быстро убрать так:
+
+```bash
+bash scripts/clean.sh
 ```
 
 ## 9. Docker и прод
@@ -209,7 +230,7 @@ bash server_check.sh
 
 ## 11. Что стоит улучшить дальше
 
-- вынести source adapters из `bot.py` в отдельные модули
+- разнести `app/sources.py` на отдельные адаптеры по сервисам
 - улучшить парсинг `Apple Music` и `SoundCloud`
 - добавить `.env.example`
 - расширить интеграционные и e2e-тесты

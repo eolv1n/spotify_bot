@@ -2,9 +2,11 @@
 __pycache__/
 *.py[cod]
 *$py.class
+.python-version
 
 # --- Virtualenv ---
 venv/
+.venv/
 .env/
 .env.bak/
 *.env
@@ -30,6 +32,7 @@ dist/
 
 # --- Coverage & testing ---
 .coverage
+.coverage.*
 coverage.xml
 htmlcov/
 .pytest_cache/
@@ -60,3 +63,7 @@ docker-compose.override.yml
 deploy.log
 spotify_bot.db
 cache/
+
+# --- Local runtime artifacts ---
+app/__pycache__/
+tests/**/__pycache__/

@@ -11,6 +11,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 import bot
 
 extract_yandex_track_ref = bot.extract_yandex_track_ref
+extract_apple_music_song_url = bot.extract_apple_music_song_url
 build_caption = bot.build_caption
 build_inline_description = bot.build_inline_description
 get_cached_track = bot.get_cached_track
@@ -24,6 +25,21 @@ set_cached_track = bot.set_cached_track
 def test_math_addition():
     """Пример самого простого юнит-теста."""
     assert 2 + 3 == 5
+
+
+def test_extract_apple_music_song_url():
+    assert (
+        extract_apple_music_song_url(
+            "https://music.apple.com/us/album/the-light-remixes-single/1811230937?i=1811230938"
+        )
+        == "https://music.apple.com/us/song/1811230938"
+    )
+    assert (
+        extract_apple_music_song_url(
+            "https://music.apple.com/us/song/without-hesitation-live-feat-marlene-lamb/1811230938"
+        )
+        == "https://music.apple.com/us/song/1811230938"
+    )
 
 
 def test_string_contains():
@@ -42,15 +58,35 @@ def test_parametrized(text, expected):
 
 @pytest.mark.asyncio
 async def test_parse_apple_music():
-    """Тест парсинга Apple Music (mock)."""
-    with patch('bot.aiohttp.ClientSession.get') as mock_get:
+    """Тест парсинга Apple Music через ld+json song page."""
+    with patch('app.sources.aiohttp.ClientSession.get') as mock_get:
         mock_resp = AsyncMock()
         mock_resp.status = 200
         mock_resp.text = AsyncMock(return_value='''
         <html>
         <head>
-        <meta property="og:title" content="Song Name by Artist Name on Apple Music">
-        <meta property="og:description" content="Album Name · 2023">
+        <meta property="og:image" content="https://example.com/image.jpg">
+        <script id="schema:song" type="application/ld+json">
+        {
+          "@context": "http://schema.org",
+          "@type": "MusicComposition",
+          "name": "Song Name",
+          "datePublished": "2023-04-22",
+          "audio": {
+            "@type": "MusicRecording",
+            "name": "Song Name",
+            "datePublished": "2023-04-22",
+            "image": "https://example.com/image.jpg",
+            "byArtist": [
+              {"@type": "MusicGroup", "name": "Artist Name"}
+            ],
+            "inAlbum": {
+              "@type": "MusicAlbum",
+              "name": "Album Name"
+            }
+          }
+        }
+        </script>
         <meta property="og:image" content="https://example.com/image.jpg">
         </head>
         </html>
@@ -61,7 +97,29 @@ async def test_parse_apple_music():
         assert result["artist"] == "Artist Name"
         assert result["track"] == "Song Name"
         assert result["album"] == "Album Name"
-        assert result["release_date"] == "2023"
+        assert result["release_date"] == "22.04.2023"
+
+
+@pytest.mark.asyncio
+async def test_parse_apple_music_falls_back_to_meta_tags():
+    with patch('app.sources.aiohttp.ClientSession.get') as mock_get:
+        mock_resp = AsyncMock()
+        mock_resp.status = 200
+        mock_resp.text = AsyncMock(return_value='''
+        <html>
+        <head>
+        <meta name="apple:title" content="Song Name">
+        <meta name="apple:description" content="Listen to Song Name by Artist Name on Apple Music. 2023. Duration: 3:00">
+        <meta property="og:image" content="https://example.com/image.jpg">
+        </head>
+        </html>
+        ''')
+        mock_get.return_value.__aenter__.return_value = mock_resp
+
+        result = await parse_apple_music("https://music.apple.com/us/song/song-name/123")
+        assert result["artist"] == "Artist Name"
+        assert result["track"] == "Song Name"
+        assert result["label"] == "Apple Music"
 
 
 @pytest.mark.asyncio
@@ -112,7 +170,7 @@ async def test_parse_yandex_music():
     )()
 
     client = type("Client", (), {"tracks": lambda self, refs: [track]})()
-    with patch("bot.get_yandex_client", return_value=client):
+    with patch("app.sources.get_yandex_client", return_value=client):
         result = await parse_yandex_music("https://music.yandex.ru/album/1/track/123")
         assert result["artist"] == "Artist One, Artist Two"
         assert result["track"] == "Track Name"
@@ -138,7 +196,7 @@ async def test_parse_yandex_music_with_empty_albums():
     )()
 
     client = type("Client", (), {"tracks": lambda self, refs: [track]})()
-    with patch("bot.get_yandex_client", return_value=client):
+    with patch("app.sources.get_yandex_client", return_value=client):
         result = await parse_yandex_music("https://music.yandex.ru/album/1/track/123")
         assert result["artist"] == "Artist One"
         assert result["album"] == "Unknown Album"
@@ -169,6 +227,18 @@ def test_build_caption_hides_generic_yandex_label():
     assert "Label:" not in caption
 
 
+def test_build_caption_hides_generic_apple_music_label():
+    caption = build_caption(
+        "Artist",
+        "Track",
+        "Album",
+        "01.01.2024",
+        "Apple Music",
+        "apple_music",
+    )
+    assert "Label:" not in caption
+
+
 def test_build_caption_hides_suspicious_yandex_label():
     caption = build_caption(
         "Artist",
@@ -183,6 +253,10 @@ def test_build_caption_hides_suspicious_yandex_label():
 
 def test_build_inline_description_hides_generic_yandex_label():
     assert build_inline_description("Album", "Яндекс.Музыка", "yandex_music") == "Album"
+
+
+def test_build_inline_description_hides_generic_apple_music_label():
+    assert build_inline_description("Album", "Apple Music", "apple_music") == "Album"
 
 
 def test_build_inline_description_keeps_normal_label():
@@ -248,7 +322,7 @@ async def test_parse_yandex_music_prefers_canonical_candidate():
         },
     )()
 
-    with patch("bot.get_yandex_client", return_value=client):
+    with patch("app.sources.get_yandex_client", return_value=client):
         result = await parse_yandex_music("https://music.yandex.ru/album/1/track/123")
         assert result["artist"] == "Nox Vahn, Marsh, Mimi Page"
         assert result["album"] == "Prospect EP"
@@ -315,7 +389,7 @@ async def test_parse_yandex_music_keeps_specific_base_label_when_refined_is_gene
         },
     )()
 
-    with patch("bot.get_yandex_client", return_value=client):
+    with patch("app.sources.get_yandex_client", return_value=client):
         result = await parse_yandex_music("https://music.yandex.ru/album/1/track/123")
         assert result["label"] == "Креатив-ИН"
         assert result["release_date"] == "01.10.2019"
@@ -337,7 +411,7 @@ async def test_parse_music_url_uses_cache():
     }
     set_cached_track(url, payload)
 
-    with patch('bot.parse_apple_music', new_callable=AsyncMock) as mock_parser:
+    with patch('app.sources.parse_apple_music', new_callable=AsyncMock) as mock_parser:
         result = await parse_music_url(url)
         assert result == payload
         mock_parser.assert_not_called()
