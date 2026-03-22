@@ -86,6 +86,74 @@ CACHE_DB_PATH=cache/music_cache.sqlite3
 CACHE_TTL_SECONDS=43200
 ```
 
+Для серверного деплоя теперь удобнее держать этот файл вне репозитория, например в
+`/opt/spotify_bot_runtime/bot.env`.
+
+## Установка на новый сервер
+
+Теперь проект можно раскладывать как "инфраструктуру как код": код живёт отдельно,
+runtime-конфиги отдельно, а установка делается одним bootstrap-скриптом.
+
+Самый быстрый вариант для нового сервера:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/eolv1n/spotify_bot/main/install.sh | sudo bash
+```
+
+Если нужно переопределить путь или ветку:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/eolv1n/spotify_bot/main/install.sh | \
+  sudo INSTALL_DIR=/opt/spotify_bot REPO_REF=main bash
+```
+
+Этот инсталлер:
+
+- при необходимости поставит `git`
+- склонирует или обновит репозиторий в `INSTALL_DIR`
+- запустит внутренний bootstrap, который уже поставит `Docker` и подготовит runtime
+
+Ручной сценарий тоже остаётся доступным:
+
+1. Склонируй репозиторий или скачай его на сервер.
+2. Скопируй шаблон install-конфига:
+
+```bash
+cp deploy/install.conf.example deploy/install.conf
+```
+
+3. При необходимости поменяй пути и ветку в `deploy/install.conf`.
+4. Запусти bootstrap:
+
+```bash
+sudo bash scripts/bootstrap_server.sh
+```
+
+Что сделает bootstrap:
+
+- установит `Docker`, `docker compose` и `Git` на Debian/Ubuntu
+- склонирует или обновит репозиторий в `INSTALL_DIR`
+- создаст runtime-директории
+- создаст шаблоны `bot.env` и `wg0.conf`, если их ещё нет
+- запустит `deploy.sh`, если конфиги уже заполнены
+
+Runtime по умолчанию:
+
+- env-файл: `/opt/spotify_bot_runtime/bot.env`
+- кеш: `/opt/spotify_bot_runtime/cache`
+- WireGuard: `/opt/spotify_bot_runtime/wireguard/wg_confs/wg0.conf`
+
+Если bootstrap создал шаблоны впервые, он остановится и попросит заполнить:
+
+- `/opt/spotify_bot_runtime/bot.env`
+- `/opt/spotify_bot_runtime/wireguard/wg_confs/wg0.conf`
+
+После этого достаточно повторно выполнить:
+
+```bash
+sudo /opt/spotify_bot/deploy.sh
+```
+
 ## Быстрый старт
 
 ```bash
@@ -117,6 +185,11 @@ spotify_bot/
   Dockerfile
   docker-compose.yml
   deploy.sh
+  install.sh
+  deploy/
+    install.conf.example
+  scripts/
+    bootstrap_server.sh
 ```
 
 ## Тесты

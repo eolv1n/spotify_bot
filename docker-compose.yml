@@ -27,11 +27,14 @@ services:
       context: .
     image: spotify_bot:latest
     container_name: spotify_bot
-    env_file: .env
+    env_file:
+      - ${BOT_ENV_FILE:-.env}
     network_mode: "service:wireguard"
     depends_on:
       wireguard:
         condition: service_healthy
+    volumes:
+      - ${BOT_CACHE_DIR:-./cache}:/app/cache
     restart: unless-stopped
     mem_limit: 300m
     cpus: 0.50

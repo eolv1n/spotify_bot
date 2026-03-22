@@ -1,15 +1,22 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO_DIR="$HOME/spotify_bot"
-IMAGE_NAME="spotify_bot"
-BOT_CONTAINER_NAME="spotify_bot"
-WG_CONTAINER_NAME="spotify_bot_wg"
-WG_CONFIG_DIR="${WG_CONFIG_DIR:-$HOME/spotify_bot_runtime/wireguard}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="${REPO_DIR:-$SCRIPT_DIR}"
+IMAGE_NAME="${IMAGE_NAME:-spotify_bot}"
+BOT_CONTAINER_NAME="${BOT_CONTAINER_NAME:-spotify_bot}"
+WG_CONTAINER_NAME="${WG_CONTAINER_NAME:-spotify_bot_wg}"
+RUNTIME_DIR="${RUNTIME_DIR:-$HOME/spotify_bot_runtime}"
+BOT_ENV_FILE="${BOT_ENV_FILE:-$RUNTIME_DIR/bot.env}"
+BOT_CACHE_DIR="${BOT_CACHE_DIR:-$RUNTIME_DIR/cache}"
+WG_CONFIG_DIR="${WG_CONFIG_DIR:-$RUNTIME_DIR/wireguard}"
 WG_CONFIG_PATH="$WG_CONFIG_DIR/wg_confs/wg0.conf"
+REPO_REF="${REPO_REF:-main}"
 
 echo "🚀 Деплой Spotify Bot"
 echo "📍 Репозиторий: $REPO_DIR"
+echo "🧩 env-файл: $BOT_ENV_FILE"
+echo "💾 cache-dir: $BOT_CACHE_DIR"
 echo "📡 WireGuard runtime: $WG_CONFIG_DIR"
 echo "📅 Дата: $(date)"
 echo "---------------------------------------------"
@@ -31,11 +38,19 @@ else
 fi
 
 echo "---------------------------------------------"
-echo "📥 Обновляем main из GitHub..."
-git fetch origin main
-git reset --hard origin/main
+echo "📥 Обновляем $REPO_REF из GitHub..."
+git fetch origin "$REPO_REF"
+git checkout "$REPO_REF"
+git pull --ff-only origin "$REPO_REF"
 
-mkdir -p "$WG_CONFIG_DIR/wg_confs"
+mkdir -p "$BOT_CACHE_DIR" "$WG_CONFIG_DIR/wg_confs"
+
+if [[ ! -f "$BOT_ENV_FILE" ]]; then
+  echo "❌ Не найден env-файл: $BOT_ENV_FILE"
+  echo "ℹ️ Создай его на основе шаблона:"
+  echo "   cp $REPO_DIR/.env.example $BOT_ENV_FILE"
+  exit 1
+fi
 
 if [[ ! -f "$WG_CONFIG_PATH" ]]; then
   echo "❌ Не найден WireGuard-конфиг: $WG_CONFIG_PATH"
@@ -45,7 +60,7 @@ if [[ ! -f "$WG_CONFIG_PATH" ]]; then
   exit 1
 fi
 
-export WG_CONFIG_DIR
+export BOT_ENV_FILE BOT_CACHE_DIR WG_CONFIG_DIR
 
 VERSION="$(git rev-parse --short HEAD)"
 echo "🏷 Версия (git SHA): $VERSION"

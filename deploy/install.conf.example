@@ -1,0 +1,10 @@
+REPO_URL=https://github.com/eolv1n/spotify_bot.git
+REPO_REF=main
+INSTALL_DIR=/opt/spotify_bot
+RUNTIME_DIR=/opt/spotify_bot_runtime
+BOT_ENV_FILE=/opt/spotify_bot_runtime/bot.env
+BOT_CACHE_DIR=/opt/spotify_bot_runtime/cache
+WG_CONFIG_DIR=/opt/spotify_bot_runtime/wireguard
+PUID=1000
+PGID=1000
+TZ=Europe/Moscow
