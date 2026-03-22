@@ -19,6 +19,7 @@ from app.sources import (
     classify_music_url,
     get_album_label,
     parse_music_url,
+    resolve_redirect_url,
     resolve_spotify_link,
     search_spotify_tracks,
 )
@@ -132,6 +133,10 @@ async def inline_handler(query: InlineQuery):
             text = await resolve_spotify_link(text)
             if not text:
                 return
+        elif initial_classification.get("service") == "soundcloud_shortlink":
+            text = await resolve_redirect_url(text)
+            if not text:
+                return
         classification = classify_music_url(text)
 
         if not classification.get("supported"):
@@ -217,6 +222,12 @@ async def handle_music_link(message: types.Message):
         url = await resolve_spotify_link(url)
         if not url:
             await message.reply("Не удалось раскрыть короткую ссылку 😕")
+            return
+        classification = classify_music_url(url)
+    elif classification.get("service") == "soundcloud_shortlink":
+        url = await resolve_redirect_url(url)
+        if not url:
+            await message.reply("Не удалось раскрыть короткую ссылку SoundCloud 😕")
             return
         classification = classify_music_url(url)
 

@@ -51,6 +51,13 @@ def classify_music_url(url: str) -> dict:
             "supported": True,
         }
 
+    if host in {"on.soundcloud.com", "soundcloud.app.goo.gl"}:
+        return {
+            "service": "soundcloud_shortlink",
+            "kind": "shortlink",
+            "supported": True,
+        }
+
     if host == "open.spotify.com":
         if "track" in path_parts:
             return {"service": "spotify", "kind": "track", "supported": True}
@@ -181,6 +188,10 @@ async def get_spotify_token():
 
 
 async def resolve_spotify_link(short_url: str) -> str:
+    return await resolve_redirect_url(short_url)
+
+
+async def resolve_redirect_url(short_url: str) -> str:
     async with aiohttp.ClientSession() as session:
         try:
             async with session.get(short_url, allow_redirects=True) as resp:
@@ -563,8 +574,9 @@ async def parse_soundcloud(url: str):
             if not title_text:
                 return None
 
-            if " - " in title_text:
-                artist, track = title_text.split(" - ", 1)
+            cleaned_title = clean_soundcloud_title(title_text)
+            if " - " in cleaned_title:
+                artist, track = cleaned_title.split(" - ", 1)
             else:
                 return None
 
@@ -578,6 +590,15 @@ async def parse_soundcloud(url: str):
                 source="soundcloud",
                 source_url=url,
             )
+
+
+def clean_soundcloud_title(title: str) -> str:
+    cleaned = (title or "").strip()
+    cleaned = re.sub(r"^\s*(?:premiere|exclusive|free download)\s*:\s*", "", cleaned, flags=re.I)
+    cleaned = re.sub(r"\[[^\]]+\]\s*$", "", cleaned).strip()
+    cleaned = re.sub(r"\((?:official|premiere|exclusive)[^)]+\)\s*$", "", cleaned, flags=re.I)
+    cleaned = re.sub(r"\s{2,}", " ", cleaned)
+    return cleaned
 
 
 async def get_track_info(track_id: str):

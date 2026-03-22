@@ -11,6 +11,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 import bot
 
 build_unsupported_url_message = bot.build_unsupported_url_message
+clean_soundcloud_title = bot.clean_soundcloud_title
 classify_music_url = bot.classify_music_url
 extract_yandex_track_ref = bot.extract_yandex_track_ref
 extract_apple_music_song_url = bot.extract_apple_music_song_url
@@ -147,6 +148,26 @@ async def test_parse_soundcloud():
 
 
 @pytest.mark.asyncio
+async def test_parse_soundcloud_cleans_premiere_title():
+    with patch('bot.aiohttp.ClientSession.get') as mock_get:
+        mock_resp = AsyncMock()
+        mock_resp.status = 200
+        mock_resp.text = AsyncMock(return_value='''
+        <html>
+        <head>
+        <meta property="og:title" content="PREMIERE: Jonas Saalbach - A Piece Of The Sun [Radikon]">
+        <meta property="og:image" content="https://example.com/image.jpg">
+        </head>
+        </html>
+        ''')
+        mock_get.return_value.__aenter__.return_value = mock_resp
+
+        result = await parse_soundcloud("https://soundcloud.com/artist/track")
+        assert result["artist"] == "Jonas Saalbach"
+        assert result["track"] == "A Piece Of The Sun"
+
+
+@pytest.mark.asyncio
 async def test_parse_yandex_music():
     """Тест парсинга Яндекс.Музыки через yandex-music client."""
     album = type(
@@ -252,6 +273,11 @@ def test_classify_music_url_recognizes_unsupported_types():
         "kind": "video",
         "supported": False,
     }
+    assert classify_music_url("https://on.soundcloud.com/abc123") == {
+        "service": "soundcloud_shortlink",
+        "kind": "shortlink",
+        "supported": True,
+    }
 
 
 def test_build_unsupported_url_message_is_human_readable():
@@ -265,6 +291,13 @@ def test_build_unsupported_url_message_is_human_readable():
     assert "не ссылка на трек" in soundcloud_message
     assert "сет" in soundcloud_message
     assert "YouTube" in youtube_message
+
+
+def test_clean_soundcloud_title_removes_editorial_noise():
+    assert (
+        clean_soundcloud_title("PREMIERE: Jonas Saalbach - A Piece Of The Sun [Radikon]")
+        == "Jonas Saalbach - A Piece Of The Sun"
+    )
 
 
 def test_is_suspicious_yandex_label():
