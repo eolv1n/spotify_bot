@@ -197,35 +197,51 @@ bash scripts/clean.sh
 - [`Dockerfile`](/home/eolv1n/projects/spotify_bot/Dockerfile)
 - [`docker-compose.yml`](/home/eolv1n/projects/spotify_bot/docker-compose.yml)
 - [`deploy.sh`](/home/eolv1n/projects/spotify_bot/deploy.sh)
+- [`deploy/wireguard/wg_confs/wg0.conf.example`](/home/eolv1n/projects/spotify_bot/deploy/wireguard/wg_confs/wg0.conf.example)
+- [`scripts/diag_wg.sh`](/home/eolv1n/projects/spotify_bot/scripts/diag_wg.sh)
 
-Если деплой идёт через сервер:
+Продовый запуск теперь рассчитан на `docker compose`:
+
+- сервис `wireguard` поднимает WG-клиент
+- сервис `spotify_bot` использует `network_mode: service:wireguard`
+- весь сетевой стек бота идёт через контейнер `wireguard`
+
+Перед первым деплоем на сервере:
+
+```bash
+mkdir -p deploy/wireguard/wg_confs
+cp deploy/wireguard/wg_confs/wg0.conf.example deploy/wireguard/wg_confs/wg0.conf
+```
+
+После этого заполни `wg0.conf` своими ключами и endpoint.
+
+Обычный деплой через сервер:
 
 ```bash
 ssh <server>
 cd ~/spotify_bot
-git pull origin main
-sudo systemctl restart spotify_bot
-sudo systemctl status spotify_bot -l
+./deploy.sh
 ```
 
 ## 10. Отладка на сервере
 
-Проверить статус сервиса:
+Проверить состояние compose-сервисов:
 
 ```bash
-sudo systemctl status spotify_bot -l
+docker compose ps
 ```
 
-Посмотреть последние ошибки:
+Базовая диагностика WireGuard и маршрута до Яндекса:
 
 ```bash
-sudo tail -n 50 /var/log/spotify_bot_error.log
+bash scripts/diag_wg.sh
 ```
 
-Если нужен ручной health-check:
+Посмотреть последние логи:
 
 ```bash
-bash server_check.sh
+docker logs --tail=50 spotify_bot_wg
+docker logs --tail=50 spotify_bot
 ```
 
 ## 11. Что стоит улучшить дальше

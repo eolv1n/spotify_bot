@@ -1,0 +1,13 @@
+[Interface]
+# Name = vps>home
+Address = 172.16.6.8/32
+PrivateKey = REPLACE_WITH_PRIVATE_KEY
+DNS = 172.16.6.1
+
+[Peer]
+# Name = home-gateway
+PublicKey = REPLACE_WITH_PUBLIC_KEY
+PresharedKey = REPLACE_WITH_PRESHARED_KEY
+Endpoint = your-home-endpoint.example.com:51820
+AllowedIPs = 0.0.0.0/0
+PersistentKeepalive = 15

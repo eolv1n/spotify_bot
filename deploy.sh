@@ -2,8 +2,10 @@
 set -euo pipefail
 
 REPO_DIR="$HOME/spotify_bot"
-CONTAINER_NAME="spotify_bot"
 IMAGE_NAME="spotify_bot"
+BOT_CONTAINER_NAME="spotify_bot"
+WG_CONTAINER_NAME="spotify_bot_wg"
+WG_CONFIG_PATH="deploy/wireguard/wg_confs/wg0.conf"
 
 echo "🚀 Деплой Spotify Bot"
 echo "📍 Репозиторий: $REPO_DIR"
@@ -11,6 +13,17 @@ echo "📅 Дата: $(date)"
 echo "---------------------------------------------"
 
 cd "$REPO_DIR" || { echo "❌ Не удалось перейти в каталог $REPO_DIR"; exit 1; }
+
+if ! docker compose version >/dev/null 2>&1; then
+  echo "❌ docker compose не найден. Установи Docker Compose plugin на сервере."
+  exit 1
+fi
+
+if [[ ! -f "$WG_CONFIG_PATH" ]]; then
+  echo "❌ Не найден WireGuard-конфиг: $WG_CONFIG_PATH"
+  echo "ℹ️ Скопируй deploy/wireguard/wg_confs/wg0.conf.example в wg0.conf и заполни своими ключами."
+  exit 1
+fi
 
 # 1. Health-check сервера (если есть скрипт)
 if [[ -x "./server_check.sh" ]]; then
@@ -38,66 +51,50 @@ else
 fi
 
 echo "---------------------------------------------"
-echo "🐳 Сборка Docker-образа..."
+echo "🐳 Сборка Docker-образа через docker compose..."
 
-docker build \
-  -t "${IMAGE_NAME}:${VERSION}" \
-  -t "${IMAGE_NAME}:latest" \
-  .
+docker compose build spotify_bot
+docker image tag "${IMAGE_NAME}:latest" "${IMAGE_NAME}:${VERSION}"
 
 echo "✅ Образ собран: ${IMAGE_NAME}:${VERSION}"
 echo "---------------------------------------------"
 
-echo "🛑 Останавливаем и удаляем старый контейнер (если есть)..."
-if docker ps -a -q -f "name=^${CONTAINER_NAME}$" >/dev/null; then
-  docker rm -f "${CONTAINER_NAME}" || true
-fi
-
-echo "🚀 Запускаем новый контейнер..."
-docker run -d \
-  --name "${CONTAINER_NAME}" \
-  --env-file .env \
-  --restart unless-stopped \
-  --memory=300m \
-  --cpus=0.5 \
-  "${IMAGE_NAME}:latest"
+echo "🚀 Пересоздаём контейнеры через docker compose..."
+docker compose up -d --force-recreate wireguard spotify_bot
 
 echo "⏳ Ждём 5 секунд, даём контейнеру подняться..."
 sleep 5
 echo "---------------------------------------------"
 
-echo "🔍 Проверяем, что контейнер запущен..."
-if ! docker inspect -f '{{.State.Running}}' "${CONTAINER_NAME}" 2>/dev/null | grep -q true; then
-  echo "❌ Новый контейнер ${CONTAINER_NAME} не запустился или сразу упал."
-  echo "📜 Логи неудачного запуска:"
-  docker logs --tail=50 "${CONTAINER_NAME}" || true
+echo "🔍 Проверяем, что контейнеры запущены..."
+BOT_RUNNING="$(docker inspect -f '{{.State.Running}}' "${BOT_CONTAINER_NAME}" 2>/dev/null || true)"
+WG_RUNNING="$(docker inspect -f '{{.State.Running}}' "${WG_CONTAINER_NAME}" 2>/dev/null || true)"
 
-  echo "🧹 Удаляем неуспешный контейнер..."
-  docker rm -f "${CONTAINER_NAME}" || true
+if [[ "$BOT_RUNNING" != "true" || "$WG_RUNNING" != "true" ]]; then
+  echo "❌ Один или оба контейнера не запустились."
+  echo "📜 Логи wireguard:"
+  docker logs --tail=80 "${WG_CONTAINER_NAME}" || true
+  echo "📜 Логи spotify_bot:"
+  docker logs --tail=80 "${BOT_CONTAINER_NAME}" || true
 
   if docker image inspect "${IMAGE_NAME}:prev" >/dev/null 2>&1; then
-    echo "♻️ Выполняем rollback: запускаем контейнер из ${IMAGE_NAME}:prev"
-    docker run -d \
-      --name "${CONTAINER_NAME}" \
-      --env-file .env \
-      --restart unless-stopped \
-      --memory=300m \
-      --cpus=0.5 \
-      "${IMAGE_NAME}:prev"
-
-    echo "✅ Откат завершён, контейнер запущен из ${IMAGE_NAME}:prev"
-    docker ps | grep "${CONTAINER_NAME}" || true
-    exit 1
+    echo "♻️ Выполняем rollback bot-образа на ${IMAGE_NAME}:prev"
+    docker tag "${IMAGE_NAME}:prev" "${IMAGE_NAME}:latest"
+    docker compose up -d --force-recreate spotify_bot
+    echo "⚠️ Бот откатан на предыдущий образ. WireGuard-конфиг при этом не откатывается."
   else
     echo "⚠️ Нет образа ${IMAGE_NAME}:prev для отката. Требуется ручное вмешательство."
-    exit 1
   fi
+
+  exit 1
 fi
 
-echo "✅ Новый контейнер ${CONTAINER_NAME} успешно запущен!"
-docker ps | grep "${CONTAINER_NAME}" || true
+echo "✅ Контейнеры успешно запущены"
+docker compose ps
 
-echo "📜 Последние логи:"
-docker logs --tail=20 "${CONTAINER_NAME}" || true
+echo "📜 Последние логи WireGuard:"
+docker logs --tail=20 "${WG_CONTAINER_NAME}" || true
+echo "📜 Последние логи бота:"
+docker logs --tail=20 "${BOT_CONTAINER_NAME}" || true
 
 echo "🎉 Деплой завершён успешно"

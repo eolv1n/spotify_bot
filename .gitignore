@@ -63,6 +63,8 @@ docker-compose.override.yml
 deploy.log
 spotify_bot.db
 cache/
+deploy/wireguard/wg_confs/*.conf
+!deploy/wireguard/wg_confs/*.conf.example
 
 # --- Local runtime artifacts ---
 app/__pycache__/
