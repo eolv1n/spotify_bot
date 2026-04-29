@@ -5,6 +5,7 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+  workflow_dispatch:
 
 jobs:
   lint:
@@ -92,9 +93,20 @@ jobs:
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SSH_KEY }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          script_stop: true
           script: |
-            cd ~/spotify_bot
+            export INSTALL_DIR=/opt/spotify_bot
+            export BOT_ENV_FILE=/opt/spotify_bot_runtime/bot.env
+            export BOT_CACHE_DIR=/opt/spotify_bot_runtime/cache
+            export WG_CONFIG_DIR=/opt/spotify_bot_runtime/wireguard
+
+            if [ ! -d "$INSTALL_DIR/.git" ]; then
+              git clone --branch main https://github.com/eolv1n/spotify_bot.git "$INSTALL_DIR"
+            fi
+
+            cd "$INSTALL_DIR"
             git fetch origin main
-            git reset --hard origin/main
+            git checkout main
+            git pull --ff-only origin main
             ./deploy.sh
