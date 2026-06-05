@@ -107,6 +107,38 @@ venv/bin/python bot.py
 - `SoundCloud`
 - `Яндекс.Музыка`
 
+### Локальный запуск через Docker без WireGuard
+
+Для dev-среды не используй базовый `docker-compose.yml`: он описывает продовый
+контур и всегда тянет `wireguard`.
+
+Подними отдельный dev-контур:
+
+```bash
+cp .env.dev.example .env.dev
+# заполни .env.dev токеном тестового Telegram-бота и Spotify credentials
+docker compose -f docker-compose.dev.yml up -d --build
+```
+
+Проверить логи:
+
+```bash
+docker logs -f spotify_bot_dev
+```
+
+Остановить:
+
+```bash
+docker compose -f docker-compose.dev.yml down
+```
+
+Dev-контур специально использует отдельные имена:
+
+- контейнер: `spotify_bot_dev`
+- образ: `spotify_bot:dev`
+- env-файл: `.env.dev`
+- кеш: `./cache/dev`
+
 ## 5. Локальные тесты
 
 Полный прогон:
@@ -196,15 +228,19 @@ bash scripts/clean.sh
 
 - [`Dockerfile`](/home/eolv1n/projects/spotify_bot/Dockerfile)
 - [`docker-compose.yml`](/home/eolv1n/projects/spotify_bot/docker-compose.yml)
+- [`docker-compose.dev.yml`](/home/eolv1n/projects/spotify_bot/docker-compose.dev.yml)
 - [`deploy.sh`](/home/eolv1n/projects/spotify_bot/deploy.sh)
 - [`deploy/wireguard/wg_confs/wg0.conf.example`](/home/eolv1n/projects/spotify_bot/deploy/wireguard/wg_confs/wg0.conf.example)
 - [`scripts/diag_wg.sh`](/home/eolv1n/projects/spotify_bot/scripts/diag_wg.sh)
 
-Продовый запуск теперь рассчитан на `docker compose`:
+Продовый запуск рассчитан на базовый `docker compose`:
 
 - сервис `wireguard` поднимает WG-клиент
 - сервис `spotify_bot` использует `network_mode: service:wireguard`
 - весь сетевой стек бота идёт через контейнер `wireguard`
+
+Локальный dev-запуск вынесен в `docker-compose.dev.yml`, чтобы тестовый контур
+не зависел от WireGuard и не использовал продовые runtime-настройки.
 
 Перед первым деплоем на сервере:
 

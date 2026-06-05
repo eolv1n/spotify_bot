@@ -2,5 +2,9 @@ __pycache__/
 *.pyc
 *.log
 .env
+.env.*
+*.env
+cache/
+deploy/wireguard/wg_confs/*.conf
 .vscode/
 .git/

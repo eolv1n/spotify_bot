@@ -1,3 +1,5 @@
+# Production compose: routes bot traffic through WireGuard.
+# For local/dev testing use docker-compose.dev.yml instead.
 services:
   wireguard:
     image: lscr.io/linuxserver/wireguard:latest

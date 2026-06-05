@@ -167,6 +167,20 @@ python3 bot.py
 
 Если `.env.example` нет, создай `.env` вручную.
 
+## Docker для dev
+
+Для локальной проверки без WireGuard используй отдельный compose-файл:
+
+```bash
+cp .env.dev.example .env.dev
+# заполни .env.dev тестовыми токенами
+docker compose -f docker-compose.dev.yml up -d --build
+```
+
+Этот контур не поднимает `wireguard`, не использует `network_mode: service:wireguard`
+и по умолчанию читает именно `.env.dev`. Обычный `docker-compose.yml` остаётся
+продовым сценарием с WireGuard.
+
 ## Структура проекта
 
 ```text
@@ -184,6 +198,7 @@ spotify_bot/
   bot.py
   Dockerfile
   docker-compose.yml
+  docker-compose.dev.yml
   deploy.sh
   install.sh
   deploy/

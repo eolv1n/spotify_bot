@@ -1,0 +1,13 @@
+services:
+  spotify_bot_dev:
+    build:
+      context: .
+    image: spotify_bot:dev
+    container_name: spotify_bot_dev
+    env_file:
+      - ${DEV_BOT_ENV_FILE:-.env.dev}
+    volumes:
+      - ${DEV_BOT_CACHE_DIR:-./cache/dev}:/app/cache
+    restart: "no"
+    mem_limit: 300m
+    cpus: 0.50
