@@ -47,8 +47,17 @@ def build_inline_track_result(
     release_date: str,
     source: str,
     source_url: str,
+    sender_display: str | None = None,
 ):
-    caption = build_caption(artist, track, album, release_date, label, source)
+    caption = build_caption(
+        artist,
+        track,
+        album,
+        release_date,
+        label,
+        source,
+        sender_display=sender_display,
+    )
     keyboard = generate_keyboard(track, artist, source_url, source)
     return InlineQueryResultArticle(
         id=result_id,
@@ -61,6 +70,14 @@ def build_inline_track_result(
         ),
         reply_markup=keyboard,
     )
+
+
+def get_sender_display(user: types.User | None) -> str | None:
+    if not user:
+        return None
+    if user.username:
+        return f"@{user.username}"
+    return user.full_name or None
 
 
 def build_inline_search_shortcuts(query_text: str):
@@ -205,6 +222,7 @@ async def inline_handler(query: InlineQuery):
         return
 
     results = []
+    sender_display = get_sender_display(query.from_user)
     initial_classification = classify_music_url(text)
     if initial_classification.get("service") or "spotify.link/" in text:
         if initial_classification.get("service") == "spotify_shortlink":
@@ -248,6 +266,7 @@ async def inline_handler(query: InlineQuery):
                 release_date=release_date,
                 source=source,
                 source_url=source_url,
+                sender_display=sender_display,
             )
         )
     else:
@@ -272,6 +291,7 @@ async def inline_handler(query: InlineQuery):
                     release_date=item["release_date"],
                     source=item["source"],
                     source_url=item["source_url"],
+                    sender_display=sender_display,
                 )
             )
 
@@ -324,7 +344,15 @@ async def process_music_message(message: types.Message):
         source = track_info.get("source", "spotify")
         source_url = track_info.get("source_url", url)
 
-        caption = build_caption(artist, track, album, release_date, label, source)
+        caption = build_caption(
+            artist,
+            track,
+            album,
+            release_date,
+            label,
+            source,
+            sender_display=get_sender_display(message.from_user),
+        )
         keyboard = generate_keyboard(track, artist, source_url, source)
 
         if image_url:

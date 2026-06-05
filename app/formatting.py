@@ -111,6 +111,10 @@ def should_show_release_date(release_date: str) -> bool:
     return bool(release_date and release_date != "Unknown Date")
 
 
+def escape_markdown_text(value: str) -> str:
+    return re.sub(r"([_*`\[])", r"\\\1", value or "")
+
+
 def build_caption(
     artist: str,
     track: str,
@@ -118,6 +122,7 @@ def build_caption(
     release_date: str,
     label: str,
     source: str,
+    sender_display: str | None = None,
 ) -> str:
     lines = [f"`{artist} — {track}`"]
     if should_show_album(album):
@@ -126,6 +131,8 @@ def build_caption(
         lines.append(f"Release date: {release_date}")
     if should_show_label(source, label):
         lines.append(f"Label: {label}")
+    if sender_display:
+        lines.extend(["", f"_from {escape_markdown_text(sender_display)}_"])
     return "\n".join(lines)
 
 

@@ -39,6 +39,7 @@ search_multisource_tracks = bot.search_multisource_tracks
 set_cached_track = bot.set_cached_track
 should_auto_delete = bot.should_auto_delete
 should_send_error_feedback = bot.should_send_error_feedback
+get_sender_display = bot.get_sender_display
 
 def test_math_addition():
     """Пример самого простого юнит-теста."""
@@ -488,6 +489,20 @@ def test_build_caption_hides_unknown_album_and_date():
     assert "Release date:" not in caption
 
 
+def test_build_caption_adds_subtle_sender_footer():
+    caption = build_caption(
+        "Artist",
+        "Track",
+        "Album",
+        "01.01.2024",
+        "Label",
+        "spotify",
+        sender_display="@user_name",
+    )
+
+    assert caption.endswith("_from @user\\_name_")
+
+
 def test_build_inline_description_hides_unknown_album():
     assert build_inline_description("Unknown Album", "YouTube Music", "youtube_music") == ""
 
@@ -530,6 +545,35 @@ def test_build_inline_track_result_uses_source_metadata():
 
     assert result.title == "Lane 8 — Woman"
     assert result.description == "Childish | This Never Happened"
+
+
+def test_build_inline_track_result_passes_sender_to_message_text():
+    result = build_inline_track_result(
+        result_id="spotify-1",
+        artist="Lane 8",
+        track="Woman",
+        album="Childish",
+        image_url="https://example.com/image.jpg",
+        label="This Never Happened",
+        release_date="2022",
+        source="spotify",
+        source_url="https://open.spotify.com/track/example",
+        sender_display="Alex",
+    )
+
+    assert "_from Alex_" in result.input_message_content.message_text
+
+
+def test_get_sender_display_prefers_username():
+    user = type("User", (), {"username": "alex_music", "full_name": "Alex Music"})()
+
+    assert get_sender_display(user) == "@alex_music"
+
+
+def test_get_sender_display_falls_back_to_full_name():
+    user = type("User", (), {"username": None, "full_name": "Alex Music"})()
+
+    assert get_sender_display(user) == "Alex Music"
 
 
 def test_query_contains_cyrillic():
