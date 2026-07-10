@@ -3,7 +3,7 @@ import json
 import logging
 import re
 import threading
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, urljoin, urlparse
 
 import aiohttp
 from bs4 import BeautifulSoup
@@ -24,6 +24,7 @@ _yandex_client = None
 _yandex_client_lock = threading.Lock()
 HTTP_TIMEOUT = aiohttp.ClientTimeout(total=15, connect=3, sock_connect=3, sock_read=10)
 MAX_RESPONSE_BYTES = 1_048_576
+MAX_REDIRECT_HOPS = 3
 
 SUPPORTED_TRACK_SERVICES = {
     "spotify",
@@ -42,6 +43,13 @@ SOUNDCLOUD_NON_TRACK_PREFIXES = {
     "stream",
     "upload",
     "you",
+}
+SPOTIFY_REDIRECT_HOSTS = {"spotify.link", "open.spotify.com"}
+SOUNDCLOUD_REDIRECT_HOSTS = {
+    "on.soundcloud.com",
+    "soundcloud.app.goo.gl",
+    "soundcloud.com",
+    "www.soundcloud.com",
 }
 
 
@@ -256,14 +264,35 @@ async def get_spotify_token():
 
 
 async def resolve_spotify_link(short_url: str) -> str:
-    return await resolve_redirect_url(short_url)
+    return await resolve_redirect_url(short_url, SPOTIFY_REDIRECT_HOSTS)
 
 
-async def resolve_redirect_url(short_url: str) -> str:
+async def resolve_redirect_url(short_url: str, allowed_hosts: set[str]) -> str | None:
+    current_url = short_url
     async with create_http_session() as session:
         try:
-            async with session.get(short_url, allow_redirects=True) as resp:
-                return str(resp.url)
+            for _ in range(MAX_REDIRECT_HOPS + 1):
+                current_host = urlparse(current_url).netloc.lower().removeprefix("www.")
+                if current_host not in allowed_hosts:
+                    logging.warning("Redirect target is outside the allowed hosts")
+                    return None
+
+                async with session.get(current_url, allow_redirects=False) as resp:
+                    if resp.status in {301, 302, 303, 307, 308}:
+                        location = resp.headers.get("Location")
+                        if not location:
+                            return None
+                        current_url = urljoin(current_url, location)
+                        continue
+
+                    final_url = str(resp.url)
+                    final_host = urlparse(final_url).netloc.lower().removeprefix("www.")
+                    if 200 <= resp.status < 300 and final_host in allowed_hosts:
+                        return final_url
+                    return None
+
+            logging.warning("Redirect limit exceeded")
+            return None
         except Exception as exc:
             logging.error("Ошибка раскрытия ссылки: %s", exc)
             return None

@@ -112,7 +112,7 @@ def should_show_release_date(release_date: str) -> bool:
 
 
 def escape_markdown_text(value: str) -> str:
-    return re.sub(r"([_*`\[])", r"\\\1", value or "")
+    return re.sub(r"([\\_*`\[])", r"\\\1", value or "")
 
 
 def build_caption(
@@ -124,6 +124,11 @@ def build_caption(
     source: str,
     sender_display: str | None = None,
 ) -> str:
+    artist = escape_markdown_text(artist)
+    track = escape_markdown_text(track)
+    album = escape_markdown_text(album)
+    release_date = escape_markdown_text(release_date)
+    label = escape_markdown_text(label)
     lines = [f"`{artist} — {track}`"]
     if should_show_album(album):
         lines.extend([f"***{album}***", ""])
