@@ -13,6 +13,8 @@ WG_CONFIG_DIR="${WG_CONFIG_DIR:-$RUNTIME_DIR/wireguard}"
 WG_CONFIG_PATH="$WG_CONFIG_DIR/wg_confs/wg0.conf"
 REPO_REF="${REPO_REF:-main}"
 
+umask 077
+
 echo "🚀 Деплой Spotify Bot"
 echo "📍 Репозиторий: $REPO_DIR"
 echo "🧩 env-файл: $BOT_ENV_FILE"
@@ -59,6 +61,8 @@ if [[ ! -f "$WG_CONFIG_PATH" ]]; then
   echo "ℹ️ Затем заполни своими ключами и endpoint."
   exit 1
 fi
+
+chmod 600 "$BOT_ENV_FILE" "$WG_CONFIG_PATH"
 
 export BOT_ENV_FILE BOT_CACHE_DIR WG_CONFIG_DIR
 

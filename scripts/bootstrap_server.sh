@@ -75,6 +75,7 @@ sync_repo() {
 }
 
 prepare_runtime() {
+  umask 077
   mkdir -p "$RUNTIME_DIR" "$BOT_CACHE_DIR" "$WG_CONFIG_DIR/wg_confs"
 
   if [[ ! -f "$BOT_ENV_FILE" ]]; then
@@ -87,6 +88,8 @@ prepare_runtime() {
       "$WG_CONFIG_DIR/wg_confs/wg0.conf"
     echo "📝 Создан шаблон WireGuard: $WG_CONFIG_DIR/wg_confs/wg0.conf"
   fi
+
+  chmod 600 "$BOT_ENV_FILE" "$WG_CONFIG_DIR/wg_confs/wg0.conf"
 }
 
 validate_runtime() {

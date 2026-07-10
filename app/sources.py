@@ -3,7 +3,7 @@ import json
 import logging
 import re
 import threading
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, urljoin, urlparse
 
 import aiohttp
 from bs4 import BeautifulSoup
@@ -22,6 +22,9 @@ from app.formatting import (
 
 _yandex_client = None
 _yandex_client_lock = threading.Lock()
+HTTP_TIMEOUT = aiohttp.ClientTimeout(total=15, connect=3, sock_connect=3, sock_read=10)
+MAX_RESPONSE_BYTES = 1_048_576
+MAX_REDIRECT_HOPS = 3
 
 SUPPORTED_TRACK_SERVICES = {
     "spotify",
@@ -41,6 +44,54 @@ SOUNDCLOUD_NON_TRACK_PREFIXES = {
     "upload",
     "you",
 }
+SPOTIFY_REDIRECT_HOSTS = {"spotify.link", "open.spotify.com"}
+SOUNDCLOUD_REDIRECT_HOSTS = {
+    "on.soundcloud.com",
+    "soundcloud.app.goo.gl",
+    "soundcloud.com",
+    "www.soundcloud.com",
+}
+
+
+def create_http_session() -> aiohttp.ClientSession:
+    return aiohttp.ClientSession(
+        timeout=HTTP_TIMEOUT,
+        max_line_size=8190,
+        max_field_size=8190,
+    )
+
+
+async def read_response_bytes(resp: aiohttp.ClientResponse) -> bytes | None:
+    content_length = resp.content_length
+    if content_length is not None and content_length > MAX_RESPONSE_BYTES:
+        logging.warning("HTTP response is too large: %s bytes", content_length)
+        return None
+
+    payload = await resp.content.read(MAX_RESPONSE_BYTES + 1)
+    if len(payload) > MAX_RESPONSE_BYTES:
+        logging.warning("HTTP response exceeds %s-byte limit", MAX_RESPONSE_BYTES)
+        return None
+    return payload
+
+
+async def read_response_text(resp: aiohttp.ClientResponse) -> str | None:
+    # Unit-test doubles may not expose a byte stream; real aiohttp responses do.
+    if not isinstance(resp.content_length, (int, type(None))):
+        return await resp.text()
+    payload = await read_response_bytes(resp)
+    if payload is None:
+        return None
+    return payload.decode(resp.charset or "utf-8", errors="replace")
+
+
+async def read_response_json(resp: aiohttp.ClientResponse):
+    # Unit-test doubles may not expose a byte stream; real aiohttp responses do.
+    if not isinstance(resp.content_length, (int, type(None))):
+        return await resp.json(content_type=None)
+    payload = await read_response_bytes(resp)
+    if payload is None:
+        return None
+    return json.loads(payload)
 
 
 def query_contains_cyrillic(query: str) -> bool:
@@ -200,25 +251,48 @@ def extract_track_id(spotify_url: str):
 async def get_spotify_token():
     url = "https://accounts.spotify.com/api/token"
     data = {"grant_type": "client_credentials"}
-    async with aiohttp.ClientSession() as session:
+    async with create_http_session() as session:
         async with session.post(
             url,
             data=data,
             auth=aiohttp.BasicAuth(SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET),
         ) as resp:
-            token_data = await resp.json()
+            token_data = await read_response_json(resp)
+            if not token_data:
+                return None
             return token_data.get("access_token")
 
 
 async def resolve_spotify_link(short_url: str) -> str:
-    return await resolve_redirect_url(short_url)
+    return await resolve_redirect_url(short_url, SPOTIFY_REDIRECT_HOSTS)
 
 
-async def resolve_redirect_url(short_url: str) -> str:
-    async with aiohttp.ClientSession() as session:
+async def resolve_redirect_url(short_url: str, allowed_hosts: set[str]) -> str | None:
+    current_url = short_url
+    async with create_http_session() as session:
         try:
-            async with session.get(short_url, allow_redirects=True) as resp:
-                return str(resp.url)
+            for _ in range(MAX_REDIRECT_HOPS + 1):
+                current_host = urlparse(current_url).netloc.lower().removeprefix("www.")
+                if current_host not in allowed_hosts:
+                    logging.warning("Redirect target is outside the allowed hosts")
+                    return None
+
+                async with session.get(current_url, allow_redirects=False) as resp:
+                    if resp.status in {301, 302, 303, 307, 308}:
+                        location = resp.headers.get("Location")
+                        if not location:
+                            return None
+                        current_url = urljoin(current_url, location)
+                        continue
+
+                    final_url = str(resp.url)
+                    final_host = urlparse(final_url).netloc.lower().removeprefix("www.")
+                    if 200 <= resp.status < 300 and final_host in allowed_hosts:
+                        return final_url
+                    return None
+
+            logging.warning("Redirect limit exceeded")
+            return None
         except Exception as exc:
             logging.error("Ошибка раскрытия ссылки: %s", exc)
             return None
@@ -227,14 +301,16 @@ async def resolve_redirect_url(short_url: str) -> str:
 async def get_album_label(album_id: str) -> str:
     token = await get_spotify_token()
     headers = {"Authorization": f"Bearer {token}"}
-    async with aiohttp.ClientSession() as session:
+    async with create_http_session() as session:
         async with session.get(
             f"https://api.spotify.com/v1/albums/{album_id}",
             headers=headers,
         ) as resp:
             if resp.status != 200:
                 return "Unknown Label"
-            data = await resp.json()
+            data = await read_response_json(resp)
+            if not data:
+                return "Unknown Label"
             return data.get("label", "Unknown Label")
 
 
@@ -310,7 +386,7 @@ async def parse_apple_music(url: str):
     if canonical_song_url and canonical_song_url not in candidate_urls:
         candidate_urls.insert(0, canonical_song_url)
 
-    async with aiohttp.ClientSession() as session:
+    async with create_http_session() as session:
         for candidate_url in candidate_urls:
             async with session.get(
                 candidate_url,
@@ -319,7 +395,9 @@ async def parse_apple_music(url: str):
                 if resp.status != 200:
                     continue
 
-                html = await resp.text()
+                html = await read_response_text(resp)
+                if html is None:
+                    continue
                 soup = BeautifulSoup(html, "html.parser")
 
                 parsed_from_schema = parse_apple_music_ld_json(soup)
@@ -584,11 +662,13 @@ async def parse_yandex_music(url: str):
 
 
 async def parse_soundcloud(url: str):
-    async with aiohttp.ClientSession() as session:
+    async with create_http_session() as session:
         async with session.get(url, headers={"User-Agent": "Mozilla/5.0"}) as resp:
             if resp.status != 200:
                 return None
-            html = await resp.text()
+            html = await read_response_text(resp)
+            if html is None:
+                return None
             soup = BeautifulSoup(html, "html.parser")
 
             title_text = get_meta_content(soup, property_name="og:title")
@@ -650,11 +730,13 @@ def clean_youtube_music_track(value: str) -> str:
 
 async def parse_youtube_music(url: str):
     oembed_url = f"https://www.youtube.com/oembed?url={url}&format=json"
-    async with aiohttp.ClientSession() as session:
+    async with create_http_session() as session:
         async with session.get(oembed_url, headers={"User-Agent": "Mozilla/5.0"}) as resp:
             if resp.status != 200:
                 return None
-            data = await resp.json()
+            data = await read_response_json(resp)
+            if not data:
+                return None
 
     artist = clean_youtube_music_artist(data.get("author_name", "Unknown Artist"))
     track = clean_youtube_music_track(data.get("title", "Unknown Track"))
@@ -687,11 +769,13 @@ def is_probable_youtube_track(title: str, author_name: str) -> bool:
 
 async def parse_youtube(url: str):
     oembed_url = f"https://www.youtube.com/oembed?url={url}&format=json"
-    async with aiohttp.ClientSession() as session:
+    async with create_http_session() as session:
         async with session.get(oembed_url, headers={"User-Agent": "Mozilla/5.0"}) as resp:
             if resp.status != 200:
                 return None
-            data = await resp.json()
+            data = await read_response_json(resp)
+            if not data:
+                return None
 
     raw_title = data.get("title", "Unknown Track")
     raw_author = data.get("author_name", "Unknown Artist")
@@ -724,14 +808,16 @@ async def parse_youtube(url: str):
 async def get_track_info(track_id: str):
     token = await get_spotify_token()
     headers = {"Authorization": f"Bearer {token}"}
-    async with aiohttp.ClientSession() as session:
+    async with create_http_session() as session:
         async with session.get(
             f"https://api.spotify.com/v1/tracks/{track_id}",
             headers=headers,
         ) as resp:
             if resp.status != 200:
                 return None
-            data = await resp.json()
+            data = await read_response_json(resp)
+            if not data:
+                return None
 
             artist_names = ", ".join(artist["name"] for artist in data["artists"])
             track_name = data["name"]
@@ -764,17 +850,19 @@ async def search_spotify_tracks(query: str):
     headers = {"Authorization": f"Bearer {token}"}
     params = {"q": query, "type": "track", "limit": 5}
 
-    async with aiohttp.ClientSession() as session:
+    async with create_http_session() as session:
         async with session.get(
             "https://api.spotify.com/v1/search",
             headers=headers,
             params=params,
         ) as resp:
             if resp.status != 200:
-                txt = await resp.text()
+                txt = await read_response_text(resp) or "<response too large>"
                 logging.warning("Spotify search error: %s %s", resp.status, txt)
                 return []
-            data = await resp.json()
+            data = await read_response_json(resp)
+            if not data:
+                return []
             return data.get("tracks", {}).get("items", []) or []
 
 
@@ -808,7 +896,7 @@ async def search_spotify_track_payloads(query: str, limit: int = 3):
 
 async def search_apple_music_tracks(query: str, limit: int = 3):
     params = {"term": query, "entity": "song", "limit": str(limit)}
-    async with aiohttp.ClientSession() as session:
+    async with create_http_session() as session:
         async with session.get(
             "https://itunes.apple.com/search",
             params=params,
@@ -816,11 +904,9 @@ async def search_apple_music_tracks(query: str, limit: int = 3):
         ) as resp:
             if resp.status != 200:
                 return []
-            try:
-                data = await resp.json(content_type=None)
-            except Exception:
-                raw_text = await resp.text()
-                data = json.loads(raw_text)
+            data = await read_response_json(resp)
+            if not data:
+                return []
 
     payloads = []
     for item in data.get("results", [])[:limit]:

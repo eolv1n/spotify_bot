@@ -20,6 +20,7 @@ from app.sources import (
     parse_music_url,
     resolve_redirect_url,
     resolve_spotify_link,
+    SOUNDCLOUD_REDIRECT_HOSTS,
     search_multisource_tracks,
 )
 
@@ -230,7 +231,7 @@ async def inline_handler(query: InlineQuery):
             if not text:
                 return
         elif initial_classification.get("service") == "soundcloud_shortlink":
-            text = await resolve_redirect_url(text)
+            text = await resolve_redirect_url(text, SOUNDCLOUD_REDIRECT_HOSTS)
             if not text:
                 return
         classification = classify_music_url(text)
@@ -315,7 +316,7 @@ async def process_music_message(message: types.Message):
             return
         classification = classify_music_url(url)
     elif classification.get("service") == "soundcloud_shortlink":
-        url = await resolve_redirect_url(url)
+        url = await resolve_redirect_url(url, SOUNDCLOUD_REDIRECT_HOSTS)
         if not url:
             if should_send_error_feedback(message.chat):
                 await message.reply("Не удалось раскрыть короткую ссылку SoundCloud 😕")
