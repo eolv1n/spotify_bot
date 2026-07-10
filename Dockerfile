@@ -14,8 +14,9 @@ COPY requirements.txt .
 
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Потом уже весь код
-COPY . .
+# Копируем только runtime-код: build context не должен включать секреты.
+COPY app ./app
+COPY bot.py .
 
 # Логи без буфера
 ENV PYTHONUNBUFFERED=1
