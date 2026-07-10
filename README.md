@@ -94,17 +94,19 @@ CACHE_TTL_SECONDS=43200
 Теперь проект можно раскладывать как "инфраструктуру как код": код живёт отдельно,
 runtime-конфиги отдельно, а установка делается одним bootstrap-скриптом.
 
-Самый быстрый вариант для нового сервера:
+Скачай installer, при необходимости просмотри его, и запусти локальный файл от root:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/eolv1n/spotify_bot/main/install.sh | sudo bash
+curl -fLO https://raw.githubusercontent.com/eolv1n/spotify_bot/main/install.sh
+less install.sh
+sudo bash ./install.sh
 ```
 
 Если нужно переопределить путь или ветку:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/eolv1n/spotify_bot/main/install.sh | \
-  sudo INSTALL_DIR=/opt/spotify_bot REPO_REF=main bash
+curl -fLO https://raw.githubusercontent.com/eolv1n/spotify_bot/main/install.sh
+sudo env INSTALL_DIR=/opt/spotify_bot REPO_REF=main bash ./install.sh
 ```
 
 Этот инсталлер:

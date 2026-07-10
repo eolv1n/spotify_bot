@@ -10,7 +10,8 @@ BOOTSTRAP_CONFIG_PATH="${BOOTSTRAP_CONFIG_PATH:-}"
 require_root() {
   if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
     echo "❌ Запусти установку от root, например:"
-    echo "   curl -fsSL https://raw.githubusercontent.com/eolv1n/spotify_bot/main/install.sh | sudo bash"
+    echo "   curl -fLO https://raw.githubusercontent.com/eolv1n/spotify_bot/main/install.sh"
+    echo "   sudo bash ./install.sh"
     exit 1
   fi
 }
