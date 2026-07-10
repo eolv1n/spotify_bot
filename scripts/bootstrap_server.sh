@@ -77,6 +77,7 @@ sync_repo() {
 prepare_runtime() {
   umask 077
   mkdir -p "$RUNTIME_DIR" "$BOT_CACHE_DIR" "$WG_CONFIG_DIR/wg_confs"
+  chown "$PUID:$PGID" "$BOT_CACHE_DIR"
 
   if [[ ! -f "$BOT_ENV_FILE" ]]; then
     cp "$INSTALL_DIR/.env.example" "$BOT_ENV_FILE"

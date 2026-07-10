@@ -67,11 +67,15 @@ async def read_response_bytes(resp: aiohttp.ClientResponse) -> bytes | None:
         logging.warning("HTTP response is too large: %s bytes", content_length)
         return None
 
-    payload = await resp.content.read(MAX_RESPONSE_BYTES + 1)
-    if len(payload) > MAX_RESPONSE_BYTES:
-        logging.warning("HTTP response exceeds %s-byte limit", MAX_RESPONSE_BYTES)
-        return None
-    return payload
+    chunks = []
+    payload_size = 0
+    async for chunk in resp.content.iter_chunked(64 * 1024):
+        payload_size += len(chunk)
+        if payload_size > MAX_RESPONSE_BYTES:
+            logging.warning("HTTP response exceeds %s-byte limit", MAX_RESPONSE_BYTES)
+            return None
+        chunks.append(chunk)
+    return b"".join(chunks)
 
 
 async def read_response_text(resp: aiohttp.ClientResponse) -> str | None:

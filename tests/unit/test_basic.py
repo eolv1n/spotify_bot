@@ -9,6 +9,7 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
 import bot
+from app.sources import read_response_json
 
 build_inline_search_shortcuts = bot.build_inline_search_shortcuts
 build_inline_track_result = bot.build_inline_track_result
@@ -44,6 +45,18 @@ get_sender_display = bot.get_sender_display
 def test_math_addition():
     """Пример самого простого юнит-теста."""
     assert 2 + 3 == 5
+
+
+@pytest.mark.asyncio
+async def test_read_response_json_reads_all_stream_chunks():
+    class Content:
+        async def iter_chunked(self, _chunk_size):
+            yield b'{"label": "Anju'
+            yield b'nadeep"}'
+
+    response = type("Response", (), {"content_length": None, "content": Content()})()
+
+    assert await read_response_json(response) == {"label": "Anjunadeep"}
 
 
 def test_extract_apple_music_song_url():
