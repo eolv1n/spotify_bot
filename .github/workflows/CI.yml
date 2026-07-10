@@ -109,4 +109,19 @@ jobs:
             git fetch origin main
             git checkout main
             git pull --ff-only origin main
+            mkdir -p "$BOT_CACHE_DIR" "$WG_CONFIG_DIR/wg_confs"
+            if [ ! -f "$BOT_ENV_FILE" ]; then
+              printf '%s\n' \
+                "TELEGRAM_TOKEN=${{ secrets.TELEGRAM_TOKEN }}" \
+                "SPOTIFY_CLIENT_ID=${{ secrets.SPOTIFY_CLIENT_ID }}" \
+                "SPOTIFY_CLIENT_SECRET=${{ secrets.SPOTIFY_CLIENT_SECRET }}" \
+                "AUTO_DELETE_DELAY=${{ secrets.AUTO_DELETE_DELAY }}" \
+                "CACHE_DB_PATH=cache/music_cache.sqlite3" \
+                "CACHE_TTL_SECONDS=${{ secrets.CACHE_TTL_SECONDS }}" \
+                > "$BOT_ENV_FILE"
+            fi
+            if [ ! -f "$WG_CONFIG_DIR/wg_confs/wg0.conf" ]; then
+              printf '%s\n' "${{ secrets.WIREGUARD_WG0_CONF }}" \
+                > "$WG_CONFIG_DIR/wg_confs/wg0.conf"
+            fi
             ./deploy.sh
