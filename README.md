@@ -51,15 +51,16 @@ Telegram-бот для разбора музыкальных ссылок и п�
 
 ## Архитектура
 
-Точка входа проекта — [`bot.py`](/home/eolv1n/projects/spotify_bot/bot.py), но основная логика теперь разложена по модульной структуре в [`app/`](/home/eolv1n/projects/spotify_bot/app).
+Точка входа проекта — [`bot.py`](bot.py), но основная логика разложена по
+модулям в [`app/`](app).
 
 Текущие модули:
 
-- [`app/config.py`](/home/eolv1n/projects/spotify_bot/app/config.py) — загрузка `.env`, настройка runtime и валидация окружения
-- [`app/cache.py`](/home/eolv1n/projects/spotify_bot/app/cache.py) — `sqlite`-кеш для уже разобранных URL
-- [`app/formatting.py`](/home/eolv1n/projects/spotify_bot/app/formatting.py) — форматирование дат, caption и display-логика
-- [`app/sources.py`](/home/eolv1n/projects/spotify_bot/app/sources.py) — интеграции и парсеры `Spotify`, `Apple Music`, `SoundCloud`, `Яндекс.Музыки`
-- [`app/telegram_app.py`](/home/eolv1n/projects/spotify_bot/app/telegram_app.py) — `aiogram` handlers, inline-режим и обработка сообщений
+- [`app/config.py`](app/config.py) — загрузка `.env`, настройка runtime и валидация окружения
+- [`app/cache.py`](app/cache.py) — `sqlite`-кеш для уже разобранных URL
+- [`app/formatting.py`](app/formatting.py) — форматирование дат, caption и display-логика
+- [`app/sources.py`](app/sources.py) — интеграции и парсеры `Spotify`, `Apple Music`, `SoundCloud`, `Яндекс.Музыки`
+- [`app/telegram_app.py`](app/telegram_app.py) — `aiogram` handlers, inline-режим и обработка сообщений
 
 Что это даёт:
 
@@ -145,6 +146,11 @@ Runtime по умолчанию:
 - кеш: `/opt/spotify_bot_runtime/cache`
 - WireGuard: `/opt/spotify_bot_runtime/wireguard/wg_confs/wg0.conf`
 
+Перед переносом production на другой VPS пройди
+[чек-лист миграции](docs/operations/server-migration.md). В нём отдельно учтены
+staging без второго Telegram poller, cutover, rollback и критерии отключения
+старого сервера.
+
 Если bootstrap создал шаблоны впервые, он остановится и попросит заполнить:
 
 - `/opt/spotify_bot_runtime/bot.env`
@@ -163,11 +169,12 @@ python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 pip install -r requirements-dev.txt
-cp .env.example .env  # если создашь шаблон
+cp .env.example .env
 python3 bot.py
 ```
 
-Если `.env.example` нет, создай `.env` вручную.
+Подробные команды разработки, тестирования и диагностики собраны в
+[`docs/development.md`](docs/development.md).
 
 ## Docker для dev
 
@@ -176,12 +183,12 @@ python3 bot.py
 ```bash
 cp .env.dev.example .env.dev
 # заполни .env.dev тестовыми токенами
-docker compose -f docker-compose.dev.yml up -d --build
+docker compose -f deploy/docker-compose.dev.yml up -d --build
 ```
 
 Этот контур не поднимает `wireguard`, не использует `network_mode: service:wireguard`
-и по умолчанию читает именно `.env.dev`. Обычный `docker-compose.yml` остаётся
-продовым сценарием с WireGuard.
+и по умолчанию читает именно `.env.dev`. Обычный `docker-compose.yml` в корне
+остаётся production entrypoint с WireGuard.
 
 ## Структура проекта
 
@@ -197,16 +204,25 @@ spotify_bot/
     unit/
     integration/
     e2e/
+  docs/
+    README.md
+    development.md
+    operations/
+      server-migration.md
+  deploy/
+    docker-compose.dev.yml
+    install.conf.example
+    wireguard/
+  scripts/
+    bootstrap_server.sh
+    clean.sh
+    diag_wg.sh
+    server_check.sh
   bot.py
   Dockerfile
   docker-compose.yml
-  docker-compose.dev.yml
   deploy.sh
   install.sh
-  deploy/
-    install.conf.example
-  scripts/
-    bootstrap_server.sh
 ```
 
 ## Тесты
@@ -218,7 +234,7 @@ venv/bin/python -m pytest -q
 Проверка синтаксиса:
 
 ```bash
-python3 -m py_compile bot.py
+python3 -m py_compile bot.py app/*.py
 ```
 
 ## Что уже проверено

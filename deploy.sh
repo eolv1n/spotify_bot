@@ -31,12 +31,12 @@ if ! docker compose version >/dev/null 2>&1; then
 fi
 
 # 1. Health-check сервера (если есть скрипт)
-if [[ -x "./server_check.sh" ]]; then
-  echo "🧭 Запускаем server_check.sh..."
-  ./server_check.sh
-  echo "✅ server_check.sh завершился успешно"
+if [[ -x "./scripts/server_check.sh" ]]; then
+  echo "🧭 Запускаем scripts/server_check.sh..."
+  ./scripts/server_check.sh
+  echo "✅ scripts/server_check.sh завершился успешно"
 else
-  echo "ℹ️ server_check.sh не найден или не исполняемый — пропускаем"
+  echo "ℹ️ scripts/server_check.sh не найден или не исполняемый — пропускаем"
 fi
 
 echo "---------------------------------------------"
