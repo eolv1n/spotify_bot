@@ -27,7 +27,6 @@ jobs:
       - name: Lint (flake8)
         run: |
           flake8 .
-        working-directory: ./ 
 
   test:
     runs-on: ubuntu-latest

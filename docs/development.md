@@ -21,15 +21,15 @@
 
 Сейчас проект уже не монолитный и разделён на модули:
 
-- [`bot.py`](/home/eolv1n/projects/spotify_bot/bot.py) — совместимая точка входа
-- [`app/config.py`](/home/eolv1n/projects/spotify_bot/app/config.py) — переменные окружения и runtime-конфиг
-- [`app/cache.py`](/home/eolv1n/projects/spotify_bot/app/cache.py) — `sqlite`-кеш
-- [`app/formatting.py`](/home/eolv1n/projects/spotify_bot/app/formatting.py) — форматирование и текстовые представления
-- [`app/sources.py`](/home/eolv1n/projects/spotify_bot/app/sources.py) — интеграции и парсеры источников
-- [`app/telegram_app.py`](/home/eolv1n/projects/spotify_bot/app/telegram_app.py) — Telegram handlers и orchestration
-- [`tests/unit/`](/home/eolv1n/projects/spotify_bot/tests/unit) — юнит-тесты
-- [`tests/integration/`](/home/eolv1n/projects/spotify_bot/tests/integration) — интеграционные проверки
-- [`tests/e2e/`](/home/eolv1n/projects/spotify_bot/tests/e2e) — smoke/e2e сценарии
+- [`bot.py`](../bot.py) — совместимая точка входа
+- [`app/config.py`](../app/config.py) — переменные окружения и runtime-конфиг
+- [`app/cache.py`](../app/cache.py) — `sqlite`-кеш
+- [`app/formatting.py`](../app/formatting.py) — форматирование и текстовые представления
+- [`app/sources.py`](../app/sources.py) — интеграции и парсеры источников
+- [`app/telegram_app.py`](../app/telegram_app.py) — Telegram handlers и orchestration
+- [`tests/unit/`](../tests/unit) — юнит-тесты
+- [`tests/integration/`](../tests/integration) — интеграционные проверки
+- [`tests/e2e/`](../tests/e2e) — smoke/e2e сценарии
 
 ## Структура окружений
 
@@ -38,7 +38,7 @@
 | `main` | актуальная стабильная ветка |
 | feature-ветки | доработка отдельных задач |
 | локальный запуск | ручная проверка в Telegram |
-| VPS/systemd | продакшен или постоянный тестовый стенд |
+| VPS/Docker Compose | production runtime |
 
 ## 1. Клонирование проекта
 
@@ -117,7 +117,7 @@ venv/bin/python bot.py
 ```bash
 cp .env.dev.example .env.dev
 # заполни .env.dev токеном тестового Telegram-бота и Spotify credentials
-docker compose -f docker-compose.dev.yml up -d --build
+docker compose -f deploy/docker-compose.dev.yml up -d --build
 ```
 
 Проверить логи:
@@ -129,7 +129,7 @@ docker logs -f spotify_bot_dev
 Остановить:
 
 ```bash
-docker compose -f docker-compose.dev.yml down
+docker compose -f deploy/docker-compose.dev.yml down
 ```
 
 Dev-контур специально использует отдельные имена:
@@ -226,12 +226,12 @@ bash scripts/clean.sh
 
 В проекте есть:
 
-- [`Dockerfile`](/home/eolv1n/projects/spotify_bot/Dockerfile)
-- [`docker-compose.yml`](/home/eolv1n/projects/spotify_bot/docker-compose.yml)
-- [`docker-compose.dev.yml`](/home/eolv1n/projects/spotify_bot/docker-compose.dev.yml)
-- [`deploy.sh`](/home/eolv1n/projects/spotify_bot/deploy.sh)
-- [`deploy/wireguard/wg_confs/wg0.conf.example`](/home/eolv1n/projects/spotify_bot/deploy/wireguard/wg_confs/wg0.conf.example)
-- [`scripts/diag_wg.sh`](/home/eolv1n/projects/spotify_bot/scripts/diag_wg.sh)
+- [`Dockerfile`](../Dockerfile)
+- [`docker-compose.yml`](../docker-compose.yml)
+- [`deploy/docker-compose.dev.yml`](../deploy/docker-compose.dev.yml)
+- [`deploy.sh`](../deploy.sh)
+- [`deploy/wireguard/wg_confs/wg0.conf.example`](../deploy/wireguard/wg_confs/wg0.conf.example)
+- [`scripts/diag_wg.sh`](../scripts/diag_wg.sh)
 
 Продовый запуск рассчитан на базовый `docker compose`:
 
@@ -239,14 +239,16 @@ bash scripts/clean.sh
 - сервис `spotify_bot` использует `network_mode: service:wireguard`
 - весь сетевой стек бота идёт через контейнер `wireguard`
 
-Локальный dev-запуск вынесен в `docker-compose.dev.yml`, чтобы тестовый контур
-не зависел от WireGuard и не использовал продовые runtime-настройки.
+Локальный dev-запуск вынесен в `deploy/docker-compose.dev.yml`, чтобы тестовый
+контур не зависел от WireGuard и не использовал production runtime-настройки.
 
 Перед первым деплоем на сервере:
 
 ```bash
-mkdir -p ~/spotify_bot_runtime/wireguard/wg_confs
-cp deploy/wireguard/wg_confs/wg0.conf.example ~/spotify_bot_runtime/wireguard/wg_confs/wg0.conf
+sudo install -d -m 700 /opt/spotify_bot_runtime/wireguard/wg_confs
+sudo cp deploy/wireguard/wg_confs/wg0.conf.example \
+  /opt/spotify_bot_runtime/wireguard/wg_confs/wg0.conf
+sudo chmod 600 /opt/spotify_bot_runtime/wireguard/wg_confs/wg0.conf
 ```
 
 После этого заполни `wg0.conf` своими ключами и endpoint.
@@ -261,16 +263,12 @@ cp deploy/wireguard/wg_confs/wg0.conf.example ~/spotify_bot_runtime/wireguard/wg
 
 ```bash
 ssh <server>
-cd ~/spotify_bot
+cd /opt/spotify_bot
 ./deploy.sh
 ```
 
-Если раньше конфиг лежал внутри репозитория, миграция такая:
-
-```bash
-mkdir -p ~/spotify_bot_runtime/wireguard/wg_confs
-cp ~/spotify_bot/deploy/wireguard/wg_confs/wg0.conf ~/spotify_bot_runtime/wireguard/wg_confs/wg0.conf
-```
+Полный production layout и bootstrap описаны в
+[`README.md`](../README.md#установка-на-новый-сервер).
 
 ## 10. Отладка на сервере
 
@@ -297,5 +295,4 @@ docker logs --tail=50 spotify_bot
 
 - разнести `app/sources.py` на отдельные адаптеры по сервисам
 - улучшить парсинг `Apple Music` и `SoundCloud`
-- добавить `.env.example`
 - расширить интеграционные и e2e-тесты
