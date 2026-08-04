@@ -15,6 +15,21 @@ REPO_REF="${REPO_REF:-main}"
 
 umask 077
 
+rollback_bot_image() {
+  if docker image inspect "${IMAGE_NAME}:prev" >/dev/null 2>&1; then
+    echo "♻️ Возвращаем bot-образ на ${IMAGE_NAME}:prev"
+    docker tag "${IMAGE_NAME}:prev" "${IMAGE_NAME}:latest"
+    docker compose up -d --force-recreate spotify_bot
+    if ./scripts/prod_smoke.sh; then
+      echo "✅ Предыдущий bot-образ восстановлен и прошёл smoke"
+    else
+      echo "❌ Предыдущий bot-образ не восстановил полный runtime contract"
+    fi
+  else
+    echo "⚠️ Нет образа ${IMAGE_NAME}:prev для rollback. Требуется ручное вмешательство."
+  fi
+}
+
 echo "🚀 Деплой Spotify Bot"
 echo "📍 Репозиторий: $REPO_DIR"
 echo "🧩 env-файл: $BOT_ENV_FILE"
@@ -104,14 +119,7 @@ if [[ "$BOT_RUNNING" != "true" || "$WG_RUNNING" != "true" ]]; then
   echo "📜 Логи spotify_bot:"
   docker logs --tail=80 "${BOT_CONTAINER_NAME}" || true
 
-  if docker image inspect "${IMAGE_NAME}:prev" >/dev/null 2>&1; then
-    echo "♻️ Выполняем rollback bot-образа на ${IMAGE_NAME}:prev"
-    docker tag "${IMAGE_NAME}:prev" "${IMAGE_NAME}:latest"
-    docker compose up -d --force-recreate spotify_bot
-    echo "⚠️ Бот откатан на предыдущий образ. WireGuard-конфиг при этом не откатывается."
-  else
-    echo "⚠️ Нет образа ${IMAGE_NAME}:prev для отката. Требуется ручное вмешательство."
-  fi
+  rollback_bot_image
 
   exit 1
 fi
@@ -126,5 +134,16 @@ echo "📜 Последние логи WireGuard:"
 docker logs --tail=20 "${WG_CONTAINER_NAME}" || true
 echo "📜 Последние логи бота:"
 docker logs --tail=20 "${BOT_CONTAINER_NAME}" || true
+
+echo "🧪 Выполняем production smoke contract..."
+if ! ./scripts/prod_smoke.sh; then
+  echo "❌ Production smoke не прошёл"
+  echo "📜 Последние логи WireGuard:"
+  docker logs --tail=80 "${WG_CONTAINER_NAME}" || true
+  echo "📜 Последние логи бота:"
+  docker logs --tail=80 "${BOT_CONTAINER_NAME}" || true
+  rollback_bot_image
+  exit 1
+fi
 
 echo "🎉 Деплой завершён успешно"

@@ -162,6 +162,12 @@ staging без второго Telegram poller, cutover, rollback и критер
 sudo /opt/spotify_bot/deploy.sh
 ```
 
+Каноничные source/runtime paths, обязательные post-recreate checks и граница
+rollback описаны в
+[`docs/operations/deploy-contract.md`](docs/operations/deploy-contract.md).
+`deploy.sh` не считает deploy успешным, пока `scripts/prod_smoke.sh` не
+подтвердит polling, Telegram, Spotify, Яндекс.Музыку, SQLite и WireGuard.
+
 ## Быстрый старт
 
 ```bash
