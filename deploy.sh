@@ -80,6 +80,9 @@ fi
 chmod 600 "$BOT_ENV_FILE" "$WG_CONFIG_PATH"
 
 export BOT_ENV_FILE BOT_CACHE_DIR WG_CONFIG_DIR
+export PROD_BOT_ENV_FILE="$BOT_ENV_FILE"
+export PROD_BOT_CACHE_DIR="$BOT_CACHE_DIR"
+export PROD_WG_CONFIG_DIR="$WG_CONFIG_DIR"
 
 VERSION="$(git rev-parse --short HEAD)"
 echo "🏷 Версия (git SHA): $VERSION"

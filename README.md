@@ -189,12 +189,13 @@ python3 bot.py
 ```bash
 cp .env.dev.example .env.dev
 # заполни .env.dev тестовыми токенами
-docker compose -f deploy/docker-compose.dev.yml up -d --build
+./scripts/dev.sh
 ```
 
 Этот контур не поднимает `wireguard`, не использует `network_mode: service:wireguard`
 и по умолчанию читает именно `.env.dev`. Обычный `docker-compose.yml` в корне
-остаётся production entrypoint с WireGuard.
+остаётся production entrypoint с WireGuard и требует внешние runtime-пути,
+которые явно передаёт `deploy.sh`.
 
 ## Структура проекта
 

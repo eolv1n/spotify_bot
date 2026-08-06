@@ -117,7 +117,7 @@ venv/bin/python bot.py
 ```bash
 cp .env.dev.example .env.dev
 # заполни .env.dev токеном тестового Telegram-бота и Spotify credentials
-docker compose -f deploy/docker-compose.dev.yml up -d --build
+./scripts/dev.sh
 ```
 
 Проверить логи:
@@ -129,7 +129,7 @@ docker logs -f spotify_bot_dev
 Остановить:
 
 ```bash
-docker compose -f deploy/docker-compose.dev.yml down
+./scripts/dev.sh down
 ```
 
 Dev-контур специально использует отдельные имена:
@@ -238,6 +238,8 @@ bash scripts/clean.sh
 - сервис `wireguard` поднимает WG-клиент
 - сервис `spotify_bot` использует `network_mode: service:wireguard`
 - весь сетевой стек бота идёт через контейнер `wireguard`
+- repo-local defaults для `.env`, cache и `deploy/wireguard` отсутствуют;
+  обязательные `PROD_*` paths выставляет `deploy.sh`
 
 Локальный dev-запуск вынесен в `deploy/docker-compose.dev.yml`, чтобы тестовый
 контур не зависел от WireGuard и не использовал production runtime-настройки.
@@ -257,7 +259,8 @@ sudo chmod 600 /opt/spotify_bot_runtime/wireguard/wg_confs/wg0.conf
 
 - живой `WireGuard`-конфиг хранится вне git-репозитория
 - это защищает деплой от конфликтов прав доступа после запуска контейнера
-- при необходимости можно переопределить путь через `WG_CONFIG_DIR`
+- путь для `deploy.sh` можно переопределить через `WG_CONFIG_DIR`; скрипт
+  передаст его Compose как явный production runtime path
 
 Обычный деплой через сервер:
 
