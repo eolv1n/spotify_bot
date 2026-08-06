@@ -64,6 +64,11 @@ jobs:
           chmod +x scripts/prod_smoke.sh tests/e2e/prod_smoke_test.sh
           tests/e2e/prod_smoke_test.sh
 
+      - name: Test Compose runtime guardrails
+        run: |
+          chmod +x scripts/dev.sh tests/e2e/compose_guard_test.sh
+          tests/e2e/compose_guard_test.sh
+
       - name: Upload JUnit report
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
