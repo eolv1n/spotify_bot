@@ -14,6 +14,7 @@ services:
       - TZ=${TZ:-Europe/Moscow}
     volumes:
       - ${PROD_WG_CONFIG_DIR:?Set PROD_WG_CONFIG_DIR to the external production WireGuard runtime}:/config
+      - ./deploy/wireguard/init/10-bootstrap-dns.sh:/custom-cont-init.d/10-bootstrap-dns.sh:ro
       - /lib/modules:/lib/modules:ro
     sysctls:
       - net.ipv4.conf.all.src_valid_mark=1
