@@ -172,6 +172,10 @@ Docker DNS для разрешения hostname endpoint; после появл�
 туннельный DNS из runtime `wg0.conf`. Детали и причина этого bootstrap guard
 описаны в deploy contract.
 
+Не выполняй отдельный `docker restart spotify_bot_wg`: после смены его network
+namespace нужно также перезапустить `spotify_bot`. Штатный `deploy.sh` делает
+безопасный recreate обоих сервисов и затем запускает полный smoke.
+
 ## Быстрый старт
 
 ```bash
