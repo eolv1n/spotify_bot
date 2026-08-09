@@ -43,6 +43,18 @@ export WG_CONFIG_DIR=/opt/spotify_bot_runtime/wireguard
 Deploy выполняет fetch/fast-forward, build, SHA-tag, recreate `wireguard` и
 `spotify_bot`, затем вызывает `scripts/prod_smoke.sh`.
 
+Перед активацией WireGuard hook
+`deploy/wireguard/init/10-bootstrap-dns.sh` восстанавливает Docker resolver
+`127.0.0.11`. Это разрывает циклическую зависимость при hostname-based
+endpoint: tunnel DNS из `wg0.conf` ещё недоступен, пока не поднят `wg0`, но
+для поднятия `wg0` сначала надо разрешить hostname endpoint. После активации
+туннеля штатный `wg-quick` заменяет bootstrap resolver на DNS из `wg0.conf`,
+поэтому рабочие DNS-запросы остаются внутри full-tunnel datapath.
+
+Значение можно явно переопределить через `WG_BOOTSTRAP_DNS`, но production по
+умолчанию использует Docker embedded DNS. Не подменять его публичным resolver
+без отдельной проверки DNS leak.
+
 ## Success и smoke
 
 Deploy успешен, только если одновременно подтверждены:

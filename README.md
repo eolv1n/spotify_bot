@@ -167,6 +167,10 @@ rollback описаны в
 [`docs/operations/deploy-contract.md`](docs/operations/deploy-contract.md).
 `deploy.sh` не считает deploy успешным, пока `scripts/prod_smoke.sh` не
 подтвердит polling, Telegram, Spotify, Яндекс.Музыку, SQLite и WireGuard.
+Перед запуском WireGuard production Compose также восстанавливает временный
+Docker DNS для разрешения hostname endpoint; после появления `wg0` применяется
+туннельный DNS из runtime `wg0.conf`. Детали и причина этого bootstrap guard
+описаны в deploy contract.
 
 ## Быстрый старт
 
