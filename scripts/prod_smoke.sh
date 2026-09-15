@@ -11,9 +11,10 @@ log() {
 }
 
 check_runtime() {
-  local bot_running wg_running wg_health bot_logs api_output handshake_output
+  local bot_running bot_started_at wg_running wg_health api_output handshake_output
 
   bot_running="$(docker inspect -f '{{.State.Running}}' "$BOT_CONTAINER_NAME" 2>/dev/null || true)"
+  bot_started_at="$(docker inspect -f '{{.State.StartedAt}}' "$BOT_CONTAINER_NAME" 2>/dev/null || true)"
   wg_running="$(docker inspect -f '{{.State.Running}}' "$WG_CONTAINER_NAME" 2>/dev/null || true)"
   wg_health="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}missing{{end}}' "$WG_CONTAINER_NAME" 2>/dev/null || true)"
 
@@ -26,11 +27,13 @@ check_runtime() {
     return 1
   }
 
-  bot_logs="$(docker logs "$BOT_CONTAINER_NAME" 2>&1)" || {
-    log "FAIL bot logs are unavailable"
+  [[ -n "$bot_started_at" ]] || {
+    log "FAIL bot start time is unavailable"
     return 1
   }
-  if ! grep -F 'Бот запущен и готов к работе' <<<"$bot_logs" >/dev/null; then
+  # Stream only the latest lines from this container start; never store its full log in Bash.
+  if ! docker logs --since "$bot_started_at" --tail 2000 "$BOT_CONTAINER_NAME" 2>&1 \
+      | grep -F 'Бот запущен и готов к работе' >/dev/null; then
     log "FAIL polling startup marker is absent"
     return 1
   fi
