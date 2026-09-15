@@ -11,6 +11,11 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 import bot
 from app.sources import read_response_json
 
+
+async def run_inline(function, *args, **kwargs):
+    """Keep mock client calls on the test loop; these tests target refinement."""
+    return function(*args, **kwargs)
+
 build_inline_search_shortcuts = bot.build_inline_search_shortcuts
 build_inline_track_result = bot.build_inline_track_result
 build_unsupported_url_message = bot.build_unsupported_url_message
@@ -736,7 +741,8 @@ async def test_parse_yandex_music_prefers_canonical_candidate():
         },
     )()
 
-    with patch("app.sources.get_yandex_client", return_value=client):
+    with patch("app.sources.get_yandex_client", return_value=client), \
+            patch("app.sources.asyncio.to_thread", new=run_inline):
         result = await parse_yandex_music("https://music.yandex.ru/album/1/track/123")
         assert result["artist"] == "Nox Vahn, Marsh, Mimi Page"
         assert result["album"] == "Prospect EP"
@@ -803,7 +809,8 @@ async def test_parse_yandex_music_keeps_specific_base_label_when_refined_is_gene
         },
     )()
 
-    with patch("app.sources.get_yandex_client", return_value=client):
+    with patch("app.sources.get_yandex_client", return_value=client), \
+            patch("app.sources.asyncio.to_thread", new=run_inline):
         result = await parse_yandex_music("https://music.yandex.ru/album/1/track/123")
         assert result["label"] == "Креатив-ИН"
         assert result["release_date"] == "01.10.2019"

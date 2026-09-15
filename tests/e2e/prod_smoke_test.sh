@@ -14,11 +14,17 @@ case "${1:-}" in
   inspect)
     if [[ "$*" == *'Health.Status'* ]]; then
       echo healthy
+    elif [[ "$*" == *'StartedAt'* ]]; then
+      echo 2026-09-15T00:00:00Z
     else
       echo true
     fi
     ;;
   logs)
+    [[ "$*" == *'--since 2026-09-15T00:00:00Z --tail 2000 spotify_bot'* ]] || {
+      echo "unbounded docker logs request: $*" >&2
+      exit 2
+    }
     echo 'INFO Бот запущен и готов к работе (включая inline-режим)'
     ;;
   exec)
