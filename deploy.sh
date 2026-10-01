@@ -55,6 +55,10 @@ echo "📥 Обновляем $REPO_REF из GitHub..."
 git fetch origin "$REPO_REF"
 git checkout "$REPO_REF"
 git pull --ff-only origin "$REPO_REF"
+if [[ -n "${EXPECTED_SHA:-}" && "$(git rev-parse HEAD)" != "$EXPECTED_SHA" ]]; then
+  echo "❌ Checkout differs from the commit verified by CI; rerun the intended release"
+  exit 1
+fi
 
 mkdir -p "$BOT_CACHE_DIR"
 

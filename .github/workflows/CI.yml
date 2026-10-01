@@ -68,6 +68,7 @@ jobs:
         run: |
           chmod +x scripts/prod_smoke.sh tests/e2e/prod_smoke_test.sh
           tests/e2e/prod_smoke_test.sh
+          bash tests/e2e/actions_deploy_test.sh
 
       - name: Test Compose runtime guardrails
         run: |
@@ -115,6 +116,7 @@ jobs:
             export INSTALL_DIR=/opt/spotify_bot
             export BOT_ENV_FILE=/opt/spotify_bot_runtime/bot.env
             export BOT_CACHE_DIR=/opt/spotify_bot_runtime/cache
+            export EXPECTED_SHA=${{ github.sha }}
 
             if [ ! -d "$INSTALL_DIR/.git" ]; then
               git clone --branch main https://github.com/eolv1n/spotify_bot.git "$INSTALL_DIR"
@@ -126,15 +128,6 @@ jobs:
             git pull --ff-only origin main
             umask 077
             mkdir -p "$BOT_CACHE_DIR"
-            if [ ! -f "$BOT_ENV_FILE" ]; then
-              printf '%s\n' \
-                "TELEGRAM_TOKEN=${{ secrets.TELEGRAM_TOKEN }}" \
-                "SPOTIFY_CLIENT_ID=${{ secrets.SPOTIFY_CLIENT_ID }}" \
-                "SPOTIFY_CLIENT_SECRET=${{ secrets.SPOTIFY_CLIENT_SECRET }}" \
-                "AUTO_DELETE_DELAY=${{ secrets.AUTO_DELETE_DELAY }}" \
-                "CACHE_DB_PATH=cache/music_cache.sqlite3" \
-                "CACHE_TTL_SECONDS=${{ secrets.CACHE_TTL_SECONDS }}" \
-                > "$BOT_ENV_FILE"
-            fi
+            test -f "$BOT_ENV_FILE" || { echo 'Provision runtime env on the host before deploy'; exit 1; }
             chmod 600 "$BOT_ENV_FILE"
             ./deploy.sh
