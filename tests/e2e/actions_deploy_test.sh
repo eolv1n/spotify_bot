@@ -7,6 +7,10 @@ mkdir -p "$TEST_ROOT/bin"
 cat > "$TEST_ROOT/bin/ssh" <<'MOCK'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$WINDOW_TEST_LOG"
+remote_command="${!#}"
+if [[ "$remote_command" == *'ufw --force delete'* && "$remote_command" == *'systemctl stop'* ]]; then
+  exec bash -c "$remote_command"
+fi
 if [[ "$*" == *'systemd-run'* && "${WINDOW_TEST_FAIL_TIMER:-0}" == 1 ]]; then
   exit 1
 fi
@@ -22,6 +26,16 @@ case "$1 $2" in
 esac
 MOCK
 chmod +x "$TEST_ROOT/bin/ssh" "$TEST_ROOT/bin/gh"
+cat > "$TEST_ROOT/bin/ufw" <<'MOCK'
+#!/usr/bin/env bash
+printf 'ufw %s\n' "$*" >> "$WINDOW_TEST_LOG"
+exit "${WINDOW_TEST_FAIL_CLEANUP:-0}"
+MOCK
+cat > "$TEST_ROOT/bin/systemctl" <<'MOCK'
+#!/usr/bin/env bash
+printf 'systemctl %s\n' "$*" >> "$WINDOW_TEST_LOG"
+MOCK
+chmod +x "$TEST_ROOT/bin/ufw" "$TEST_ROOT/bin/systemctl"
 export PATH="$TEST_ROOT/bin:$PATH"
 export WINDOW_TEST_LOG="$TEST_ROOT/commands"
 bash "$PROJECT_ROOT/scripts/actions_deploy.sh" > /dev/null
@@ -46,4 +60,14 @@ if WINDOW_TEST_FAIL_RUN=1 bash "$PROJECT_ROOT/scripts/actions_deploy.sh" > /dev/
   exit 1
 fi
 grep -q 'ufw --force delete' "$WINDOW_TEST_LOG"
+
+: > "$WINDOW_TEST_LOG"
+if WINDOW_TEST_FAIL_CLEANUP=1 bash "$PROJECT_ROOT/scripts/actions_deploy.sh" > /dev/null 2>&1; then
+  echo '[FAIL] Failed firewall cleanup accepted' >&2
+  exit 1
+fi
+if grep -q '^systemctl stop' "$WINDOW_TEST_LOG"; then
+  echo '[FAIL] Rollback timer cancelled after failed firewall cleanup' >&2
+  exit 1
+fi
 echo '[OK] SSH window ordering and failure cleanup passed'
