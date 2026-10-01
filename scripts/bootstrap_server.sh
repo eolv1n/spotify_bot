@@ -17,7 +17,6 @@ INSTALL_DIR="${INSTALL_DIR:-/opt/spotify_bot}"
 RUNTIME_DIR="${RUNTIME_DIR:-/opt/spotify_bot_runtime}"
 BOT_ENV_FILE="${BOT_ENV_FILE:-$RUNTIME_DIR/bot.env}"
 BOT_CACHE_DIR="${BOT_CACHE_DIR:-$RUNTIME_DIR/cache}"
-WG_CONFIG_DIR="${WG_CONFIG_DIR:-$RUNTIME_DIR/wireguard}"
 PUID="${PUID:-1000}"
 PGID="${PGID:-1000}"
 TZ="${TZ:-Europe/Moscow}"
@@ -76,7 +75,7 @@ sync_repo() {
 
 prepare_runtime() {
   umask 077
-  mkdir -p "$RUNTIME_DIR" "$BOT_CACHE_DIR" "$WG_CONFIG_DIR/wg_confs"
+  mkdir -p "$RUNTIME_DIR" "$BOT_CACHE_DIR"
   chown "$PUID:$PGID" "$BOT_CACHE_DIR"
 
   if [[ ! -f "$BOT_ENV_FILE" ]]; then
@@ -84,13 +83,7 @@ prepare_runtime() {
     echo "📝 Создан шаблон env: $BOT_ENV_FILE"
   fi
 
-  if [[ ! -f "$WG_CONFIG_DIR/wg_confs/wg0.conf" ]]; then
-    cp "$INSTALL_DIR/deploy/wireguard/wg_confs/wg0.conf.example" \
-      "$WG_CONFIG_DIR/wg_confs/wg0.conf"
-    echo "📝 Создан шаблон WireGuard: $WG_CONFIG_DIR/wg_confs/wg0.conf"
-  fi
-
-  chmod 600 "$BOT_ENV_FILE" "$WG_CONFIG_DIR/wg_confs/wg0.conf"
+  chmod 600 "$BOT_ENV_FILE"
 }
 
 validate_runtime() {
@@ -101,22 +94,22 @@ validate_runtime() {
     env_missing=1
   fi
 
-  if grep -Eq 'REPLACE_WITH_|your-home-endpoint\.example\.com' "$WG_CONFIG_DIR/wg_confs/wg0.conf"; then
-    echo "⚠️ Проверь и заполни WireGuard-конфиг: $WG_CONFIG_DIR/wg_confs/wg0.conf"
+  if ! grep -Eq '^YANDEX_PROXY_URL=https?://[^[:space:]]+' "$BOT_ENV_FILE"; then
+    echo "⚠️ Настрой YANDEX_PROXY_URL в $BOT_ENV_FILE и проверь доступность private RU proxy"
     env_missing=1
   fi
 
   if [[ "$env_missing" -eq 1 ]]; then
     echo
     echo "ℹ️ После заполнения файлов повторно запусти:"
-    echo "   sudo BOT_ENV_FILE=$BOT_ENV_FILE WG_CONFIG_DIR=$WG_CONFIG_DIR BOT_CACHE_DIR=$BOT_CACHE_DIR $INSTALL_DIR/deploy.sh"
+    echo "   sudo BOT_ENV_FILE=$BOT_ENV_FILE BOT_CACHE_DIR=$BOT_CACHE_DIR $INSTALL_DIR/deploy.sh"
     exit 0
   fi
 }
 
 run_deploy() {
   echo "🚀 Запускаю deploy.sh"
-  export INSTALL_DIR RUNTIME_DIR BOT_ENV_FILE BOT_CACHE_DIR WG_CONFIG_DIR PUID PGID TZ
+  export INSTALL_DIR RUNTIME_DIR BOT_ENV_FILE BOT_CACHE_DIR PUID PGID TZ
   bash "$INSTALL_DIR/deploy.sh"
 }
 

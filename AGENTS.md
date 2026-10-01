@@ -23,8 +23,11 @@
 
 - Каноничный dev workspace: `/home/eolv/projects/spotify_bot` на `eolv`.
 - Production checkout: `/opt/spotify_bot` на `baloonz`.
-- Базовый `docker-compose.yml` — production-контур с WireGuard; не запускать
+- Базовый `docker-compose.yml` — production-контур с прямой EU-сетью; не запускать
   его локально как обычную dev-команду.
 - Локальная разработка использует `deploy/docker-compose.dev.yml` без
   WireGuard и production runtime.
+- Только клиент Яндекса получает `YANDEX_PROXY_URL` из внешнего env и выходит
+  через private HTTP proxy RU/GRE. `spotify_bot_wg` сохранён остановленным;
+  `deploy/docker-compose.wireguard.yml` используется только для явного recovery.
 - Не менять production `baloonz` до зелёных локальных проверок и CI.
