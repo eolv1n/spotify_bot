@@ -137,14 +137,14 @@ sudo bash scripts/bootstrap_server.sh
 - установит `Docker`, `docker compose` и `Git` на Debian/Ubuntu
 - склонирует или обновит репозиторий в `INSTALL_DIR`
 - создаст runtime-директории
-- создаст шаблоны `bot.env` и `wg0.conf`, если их ещё нет
+- создаст шаблон `bot.env`, если его ещё нет
 - запустит `deploy.sh`, если конфиги уже заполнены
 
 Runtime по умолчанию:
 
 - env-файл: `/opt/spotify_bot_runtime/bot.env`
 - кеш: `/opt/spotify_bot_runtime/cache`
-- WireGuard: `/opt/spotify_bot_runtime/wireguard/wg_confs/wg0.conf`
+- Яндекс: `YANDEX_PROXY_URL` в runtime env, private RU HTTP proxy
 
 Перед переносом production на другой VPS пройди
 [чек-лист миграции](docs/operations/server-migration.md). В нём отдельно учтены
@@ -154,7 +154,7 @@ staging без второго Telegram poller, cutover, rollback и критер
 Если bootstrap создал шаблоны впервые, он остановится и попросит заполнить:
 
 - `/opt/spotify_bot_runtime/bot.env`
-- `/opt/spotify_bot_runtime/wireguard/wg_confs/wg0.conf`
+- `YANDEX_PROXY_URL` в runtime env; private RU proxy должен быть доступен с EU
 
 После этого достаточно повторно выполнить:
 
@@ -166,15 +166,9 @@ sudo /opt/spotify_bot/deploy.sh
 rollback описаны в
 [`docs/operations/deploy-contract.md`](docs/operations/deploy-contract.md).
 `deploy.sh` не считает deploy успешным, пока `scripts/prod_smoke.sh` не
-подтвердит polling, Telegram, Spotify, Яндекс.Музыку, SQLite и WireGuard.
-Перед запуском WireGuard production Compose также восстанавливает временный
-Docker DNS для разрешения hostname endpoint; после появления `wg0` применяется
-туннельный DNS из runtime `wg0.conf`. Детали и причина этого bootstrap guard
-описаны в deploy contract.
-
-Не выполняй отдельный `docker restart spotify_bot_wg`: после смены его network
-namespace нужно также перезапустить `spotify_bot`. Штатный `deploy.sh` делает
-безопасный recreate обоих сервисов и затем запускает полный smoke.
+подтвердит polling, Telegram, Spotify, Яндекс API через RU proxy и SQLite.
+Штатный `deploy.sh` пересоздаёт только бот. WireGuard сохранён остановленным;
+явный возврат старого full-tunnel режима описан в deploy contract.
 
 ## Быстрый старт
 
@@ -202,7 +196,7 @@ cp .env.dev.example .env.dev
 
 Этот контур не поднимает `wireguard`, не использует `network_mode: service:wireguard`
 и по умолчанию читает именно `.env.dev`. Обычный `docker-compose.yml` в корне
-остаётся production entrypoint с WireGuard и требует внешние runtime-пути,
+остаётся production entrypoint с прямым EU egress и требует внешние runtime-пути,
 которые явно передаёт `deploy.sh`.
 
 ## Структура проекта

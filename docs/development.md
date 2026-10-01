@@ -110,7 +110,7 @@ venv/bin/python bot.py
 ### Локальный запуск через Docker без WireGuard
 
 Для dev-среды не используй базовый `docker-compose.yml`: он описывает продовый
-контур и всегда тянет `wireguard`.
+контур и использует внешние production env/cache.
 
 Подними отдельный dev-контур:
 
@@ -235,10 +235,11 @@ bash scripts/clean.sh
 
 Продовый запуск рассчитан на базовый `docker compose`:
 
-- сервис `wireguard` поднимает WG-клиент
-- сервис `spotify_bot` использует `network_mode: service:wireguard`
-- весь сетевой стек бота идёт через контейнер `wireguard`
-- repo-local defaults для `.env`, cache и `deploy/wireguard` отсутствуют;
+- сервис `spotify_bot` использует прямой EU egress в обычной Docker-сети
+- только клиент Яндекса получает `YANDEX_PROXY_URL` для private RU HTTP proxy
+- WG-контейнер сохранён остановленным; optional recovery Compose находится в
+  `deploy/docker-compose.wireguard.yml`
+- repo-local defaults для `.env` и cache отсутствуют;
   обязательные `PROD_*` paths выставляет `deploy.sh`
 
 Локальный dev-запуск вынесен в `deploy/docker-compose.dev.yml`, чтобы тестовый
@@ -247,20 +248,20 @@ bash scripts/clean.sh
 Перед первым деплоем на сервере:
 
 ```bash
-sudo install -d -m 700 /opt/spotify_bot_runtime/wireguard/wg_confs
-sudo cp deploy/wireguard/wg_confs/wg0.conf.example \
-  /opt/spotify_bot_runtime/wireguard/wg_confs/wg0.conf
-sudo chmod 600 /opt/spotify_bot_runtime/wireguard/wg_confs/wg0.conf
+sudo install -d -m 700 /opt/spotify_bot_runtime
+sudo cp .env.example /opt/spotify_bot_runtime/bot.env
+sudo chmod 600 /opt/spotify_bot_runtime/bot.env
 ```
 
-После этого заполни `wg0.conf` своими ключами и endpoint.
+После этого заполни credentials и `YANDEX_PROXY_URL` в runtime env.
+Установка RU proxy, UFW boundary и recovery описаны в
+[`deploy contract`](operations/deploy-contract.md).
 
 Важно:
 
-- живой `WireGuard`-конфиг хранится вне git-репозитория
-- это защищает деплой от конфликтов прав доступа после запуска контейнера
-- путь для `deploy.sh` можно переопределить через `WG_CONFIG_DIR`; скрипт
-  передаст его Compose как явный production runtime path
+- env, cache и сохранённый WG runtime находятся вне git-репозитория
+- production deploy не требует WG config и не запускает WG
+- при отказе RU proxy автоматического переключения Яндекса на EU нет
 
 Обычный деплой через сервер:
 
@@ -281,16 +282,15 @@ cd /opt/spotify_bot
 docker compose ps
 ```
 
-Базовая диагностика WireGuard и маршрута до Яндекса:
+Production smoke проверяет реальный поиск и lookup Яндекса через proxy:
 
 ```bash
-bash scripts/diag_wg.sh
+bash scripts/prod_smoke.sh
 ```
 
 Посмотреть последние логи:
 
 ```bash
-docker logs --tail=50 spotify_bot_wg
 docker logs --tail=50 spotify_bot
 ```
 
