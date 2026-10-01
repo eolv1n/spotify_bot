@@ -8,9 +8,10 @@ from urllib.parse import parse_qs, urljoin, urlparse
 import aiohttp
 from bs4 import BeautifulSoup
 from yandex_music import Client as YandexMusicClient
+from yandex_music.utils.request import Request as YandexRequest
 
 from app.cache import get_cached_track, init_cache_db, set_cached_track
-from app.config import SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET
+from app.config import SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, YANDEX_PROXY_URL
 from app.formatting import (
     build_track_payload,
     format_date_ru,
@@ -243,7 +244,8 @@ def get_yandex_client():
     if _yandex_client is None:
         with _yandex_client_lock:
             if _yandex_client is None:
-                _yandex_client = YandexMusicClient().init()
+                request = YandexRequest(proxy_url=YANDEX_PROXY_URL, timeout=15)
+                _yandex_client = YandexMusicClient(request=request).init()
     return _yandex_client
 
 

@@ -1,31 +1,6 @@
-# Production compose: routes bot traffic through WireGuard.
-# It intentionally has no repo-local runtime defaults. Use ./deploy.sh in
-# production and ./scripts/dev.sh for local development.
+# Production: EU direct egress; Yandex uses YANDEX_PROXY_URL from runtime env.
+# Use ./deploy.sh in production and ./scripts/dev.sh for local development.
 services:
-  wireguard:
-    image: lscr.io/linuxserver/wireguard@sha256:34197b6d2731468a0e77eeb31723af07faf342878be66c1e861e287ec3600b3c
-    container_name: spotify_bot_wg
-    cap_add:
-      - NET_ADMIN
-      - SYS_MODULE
-    environment:
-      - PUID=${PUID:-1000}
-      - PGID=${PGID:-1000}
-      - TZ=${TZ:-Europe/Moscow}
-    volumes:
-      - ${PROD_WG_CONFIG_DIR:?Set PROD_WG_CONFIG_DIR to the external production WireGuard runtime}:/config
-      - ./deploy/wireguard/init/10-bootstrap-dns.sh:/custom-cont-init.d/10-bootstrap-dns.sh:ro
-      - /lib/modules:/lib/modules:ro
-    sysctls:
-      - net.ipv4.conf.all.src_valid_mark=1
-    healthcheck:
-      test: ["CMD-SHELL", "wg show >/dev/null 2>&1 && ip link show wg0 >/dev/null 2>&1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 15s
-    restart: unless-stopped
-
   spotify_bot:
     build:
       context: .
@@ -33,10 +8,6 @@ services:
     container_name: spotify_bot
     env_file:
       - ${PROD_BOT_ENV_FILE:?Set PROD_BOT_ENV_FILE to the external production env file}
-    network_mode: "service:wireguard"
-    depends_on:
-      wireguard:
-        condition: service_healthy
     volumes:
       - ${PROD_BOT_CACHE_DIR:?Set PROD_BOT_CACHE_DIR to the external production cache directory}:/app/cache
     read_only: true

@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [ main ]
   workflow_dispatch:
+    inputs:
+      deploy:
+        description: Deploy after the operator opens a timed SSH window
+        type: boolean
+        default: false
 
 jobs:
   lint:
@@ -63,6 +68,7 @@ jobs:
         run: |
           chmod +x scripts/prod_smoke.sh tests/e2e/prod_smoke_test.sh
           tests/e2e/prod_smoke_test.sh
+          bash tests/e2e/actions_deploy_test.sh
 
       - name: Test Compose runtime guardrails
         run: |
@@ -97,7 +103,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     needs: build-image
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.deploy
     steps:
       - name: Deploy to Debian VPS over SSH
         uses: appleboy/ssh-action@7eaf76671a0d7eec5d98ee897acda4f968735a17 # v1.2.0
@@ -110,7 +116,7 @@ jobs:
             export INSTALL_DIR=/opt/spotify_bot
             export BOT_ENV_FILE=/opt/spotify_bot_runtime/bot.env
             export BOT_CACHE_DIR=/opt/spotify_bot_runtime/cache
-            export WG_CONFIG_DIR=/opt/spotify_bot_runtime/wireguard
+            export EXPECTED_SHA=${{ github.sha }}
 
             if [ ! -d "$INSTALL_DIR/.git" ]; then
               git clone --branch main https://github.com/eolv1n/spotify_bot.git "$INSTALL_DIR"
@@ -121,20 +127,7 @@ jobs:
             git checkout main
             git pull --ff-only origin main
             umask 077
-            mkdir -p "$BOT_CACHE_DIR" "$WG_CONFIG_DIR/wg_confs"
-            if [ ! -f "$BOT_ENV_FILE" ]; then
-              printf '%s\n' \
-                "TELEGRAM_TOKEN=${{ secrets.TELEGRAM_TOKEN }}" \
-                "SPOTIFY_CLIENT_ID=${{ secrets.SPOTIFY_CLIENT_ID }}" \
-                "SPOTIFY_CLIENT_SECRET=${{ secrets.SPOTIFY_CLIENT_SECRET }}" \
-                "AUTO_DELETE_DELAY=${{ secrets.AUTO_DELETE_DELAY }}" \
-                "CACHE_DB_PATH=cache/music_cache.sqlite3" \
-                "CACHE_TTL_SECONDS=${{ secrets.CACHE_TTL_SECONDS }}" \
-                > "$BOT_ENV_FILE"
-            fi
-            if [ ! -f "$WG_CONFIG_DIR/wg_confs/wg0.conf" ]; then
-              printf '%s\n' "${{ secrets.WIREGUARD_WG0_CONF }}" \
-                > "$WG_CONFIG_DIR/wg_confs/wg0.conf"
-            fi
-            chmod 600 "$BOT_ENV_FILE" "$WG_CONFIG_DIR/wg_confs/wg0.conf"
+            mkdir -p "$BOT_CACHE_DIR"
+            test -f "$BOT_ENV_FILE" || { echo 'Provision runtime env on the host before deploy'; exit 1; }
+            chmod 600 "$BOT_ENV_FILE"
             ./deploy.sh
