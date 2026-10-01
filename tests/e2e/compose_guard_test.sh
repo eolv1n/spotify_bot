@@ -13,10 +13,13 @@ fi
 
 grep -Fq '${PROD_BOT_ENV_FILE:?' "$PROJECT_ROOT/docker-compose.yml"
 grep -Fq '${PROD_BOT_CACHE_DIR:?' "$PROJECT_ROOT/docker-compose.yml"
-grep -Fq '${PROD_WG_CONFIG_DIR:?' "$PROJECT_ROOT/docker-compose.yml"
+grep -Fq '${PROD_WG_CONFIG_DIR:?' "$PROJECT_ROOT/deploy/docker-compose.wireguard.yml"
 grep -Fq 'export PROD_BOT_ENV_FILE="$BOT_ENV_FILE"' "$PROJECT_ROOT/deploy.sh"
 grep -Fq 'export PROD_BOT_CACHE_DIR="$BOT_CACHE_DIR"' "$PROJECT_ROOT/deploy.sh"
-grep -Fq 'export PROD_WG_CONFIG_DIR="$WG_CONFIG_DIR"' "$PROJECT_ROOT/deploy.sh"
+if grep -q 'network_mode:\|depends_on:\|wireguard:' "$PROJECT_ROOT/docker-compose.yml"; then
+  echo "[FAIL] Default production bot still depends on WireGuard" >&2
+  exit 1
+fi
 
 mkdir -p "$TEST_ROOT/mock-bin"
 cat >"$TEST_ROOT/mock-bin/docker" <<'MOCK_DOCKER'

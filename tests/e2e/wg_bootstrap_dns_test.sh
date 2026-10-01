@@ -52,6 +52,6 @@ fi
 
 grep -Fq \
   './deploy/wireguard/init/10-bootstrap-dns.sh:/custom-cont-init.d/10-bootstrap-dns.sh:ro' \
-  "$PROJECT_ROOT/docker-compose.yml"
+  "$PROJECT_ROOT/deploy/docker-compose.wireguard.yml"
 
 echo '[OK] WireGuard bootstrap DNS hook is safe and mounted'

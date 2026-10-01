@@ -268,3 +268,13 @@ python3 -m py_compile bot.py app/*.py
 
 - GitHub: `github.com/eolv1n/spotify_bot`
 - Telegram: `@eolv1n`
+
+### Selective Yandex egress
+
+Production bot использует прямую сеть EU; только `yandex-music` получает
+`YANDEX_PROXY_URL` из внешнего runtime env. RU HTTP proxy доступен через
+существующий GRE; WG-контейнер сохраняется остановленным.
+Подробности, smoke и cutover rollback — в
+[`docs/operations/deploy-contract.md`](docs/operations/deploy-contract.md).
+GitHub Actions production deploy запускается вручную (`deploy=true`) в
+контролируемом временном SSH-окне.

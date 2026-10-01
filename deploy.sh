@@ -5,12 +5,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="${REPO_DIR:-$SCRIPT_DIR}"
 IMAGE_NAME="${IMAGE_NAME:-spotify_bot}"
 BOT_CONTAINER_NAME="${BOT_CONTAINER_NAME:-spotify_bot}"
-WG_CONTAINER_NAME="${WG_CONTAINER_NAME:-spotify_bot_wg}"
 RUNTIME_DIR="${RUNTIME_DIR:-$HOME/spotify_bot_runtime}"
 BOT_ENV_FILE="${BOT_ENV_FILE:-$RUNTIME_DIR/bot.env}"
 BOT_CACHE_DIR="${BOT_CACHE_DIR:-$RUNTIME_DIR/cache}"
-WG_CONFIG_DIR="${WG_CONFIG_DIR:-$RUNTIME_DIR/wireguard}"
-WG_CONFIG_PATH="$WG_CONFIG_DIR/wg_confs/wg0.conf"
 REPO_REF="${REPO_REF:-main}"
 
 umask 077
@@ -34,7 +31,6 @@ echo "🚀 Деплой Spotify Bot"
 echo "📍 Репозиторий: $REPO_DIR"
 echo "🧩 env-файл: $BOT_ENV_FILE"
 echo "💾 cache-dir: $BOT_CACHE_DIR"
-echo "📡 WireGuard runtime: $WG_CONFIG_DIR"
 echo "📅 Дата: $(date)"
 echo "---------------------------------------------"
 
@@ -60,7 +56,7 @@ git fetch origin "$REPO_REF"
 git checkout "$REPO_REF"
 git pull --ff-only origin "$REPO_REF"
 
-mkdir -p "$BOT_CACHE_DIR" "$WG_CONFIG_DIR/wg_confs"
+mkdir -p "$BOT_CACHE_DIR"
 
 if [[ ! -f "$BOT_ENV_FILE" ]]; then
   echo "❌ Не найден env-файл: $BOT_ENV_FILE"
@@ -69,20 +65,15 @@ if [[ ! -f "$BOT_ENV_FILE" ]]; then
   exit 1
 fi
 
-if [[ ! -f "$WG_CONFIG_PATH" ]]; then
-  echo "❌ Не найден WireGuard-конфиг: $WG_CONFIG_PATH"
-  echo "ℹ️ Создай его командой:"
-  echo "   cp $REPO_DIR/deploy/wireguard/wg_confs/wg0.conf.example $WG_CONFIG_PATH"
-  echo "ℹ️ Затем заполни своими ключами и endpoint."
+# Production requires an explicit Yandex route; never fall back silently.
+if ! grep -Eq '^YANDEX_PROXY_URL=https?://[^[:space:]]+' "$BOT_ENV_FILE"; then
+  echo "❌ YANDEX_PROXY_URL must configure a private HTTP proxy in runtime env"
   exit 1
 fi
-
-chmod 600 "$BOT_ENV_FILE" "$WG_CONFIG_PATH"
-
-export BOT_ENV_FILE BOT_CACHE_DIR WG_CONFIG_DIR
+chmod 600 "$BOT_ENV_FILE"
+export BOT_ENV_FILE BOT_CACHE_DIR
 export PROD_BOT_ENV_FILE="$BOT_ENV_FILE"
 export PROD_BOT_CACHE_DIR="$BOT_CACHE_DIR"
-export PROD_WG_CONFIG_DIR="$WG_CONFIG_DIR"
 
 VERSION="$(git rev-parse --short HEAD)"
 echo "🏷 Версия (git SHA): $VERSION"
@@ -105,7 +96,7 @@ echo "✅ Образ собран: ${IMAGE_NAME}:${VERSION}"
 echo "---------------------------------------------"
 
 echo "🚀 Пересоздаём контейнеры через docker compose..."
-docker compose up -d --force-recreate wireguard spotify_bot
+docker compose up -d --force-recreate spotify_bot
 
 echo "⏳ Ждём 5 секунд, даём контейнеру подняться..."
 sleep 5
@@ -113,12 +104,9 @@ echo "---------------------------------------------"
 
 echo "🔍 Проверяем, что контейнеры запущены..."
 BOT_RUNNING="$(docker inspect -f '{{.State.Running}}' "${BOT_CONTAINER_NAME}" 2>/dev/null || true)"
-WG_RUNNING="$(docker inspect -f '{{.State.Running}}' "${WG_CONTAINER_NAME}" 2>/dev/null || true)"
 
-if [[ "$BOT_RUNNING" != "true" || "$WG_RUNNING" != "true" ]]; then
-  echo "❌ Один или оба контейнера не запустились."
-  echo "📜 Логи wireguard:"
-  docker logs --tail=80 "${WG_CONTAINER_NAME}" || true
+if [[ "$BOT_RUNNING" != "true" ]]; then
+  echo "❌ Контейнер бота не запустился."
   echo "📜 Логи spotify_bot:"
   docker logs --tail=80 "${BOT_CONTAINER_NAME}" || true
 
@@ -130,19 +118,12 @@ fi
 echo "✅ Контейнеры успешно запущены"
 docker compose ps
 
-echo "🧭 Проверка внешнего WG runtime:"
-ls -la "$WG_CONFIG_DIR" "$WG_CONFIG_DIR/wg_confs" || true
-
-echo "📜 Последние логи WireGuard:"
-docker logs --tail=20 "${WG_CONTAINER_NAME}" || true
 echo "📜 Последние логи бота:"
 docker logs --tail=20 "${BOT_CONTAINER_NAME}" || true
 
 echo "🧪 Выполняем production smoke contract..."
 if ! ./scripts/prod_smoke.sh; then
   echo "❌ Production smoke не прошёл"
-  echo "📜 Последние логи WireGuard:"
-  docker logs --tail=80 "${WG_CONTAINER_NAME}" || true
   echo "📜 Последние логи бота:"
   docker logs --tail=80 "${BOT_CONTAINER_NAME}" || true
   rollback_bot_image

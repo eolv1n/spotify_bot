@@ -2,7 +2,6 @@
 set -euo pipefail
 
 BOT_CONTAINER_NAME="${BOT_CONTAINER_NAME:-spotify_bot}"
-WG_CONTAINER_NAME="${WG_CONTAINER_NAME:-spotify_bot_wg}"
 SMOKE_ATTEMPTS="${SMOKE_ATTEMPTS:-12}"
 SMOKE_INTERVAL_SECONDS="${SMOKE_INTERVAL_SECONDS:-5}"
 
@@ -11,22 +10,14 @@ log() {
 }
 
 check_runtime() {
-  local bot_running bot_started_at wg_running wg_health api_output handshake_output
+  local bot_running bot_started_at api_output
 
   bot_running="$(docker inspect -f '{{.State.Running}}' "$BOT_CONTAINER_NAME" 2>/dev/null || true)"
   bot_started_at="$(docker inspect -f '{{.State.StartedAt}}' "$BOT_CONTAINER_NAME" 2>/dev/null || true)"
-  wg_running="$(docker inspect -f '{{.State.Running}}' "$WG_CONTAINER_NAME" 2>/dev/null || true)"
-  wg_health="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}missing{{end}}' "$WG_CONTAINER_NAME" 2>/dev/null || true)"
-
   [[ "$bot_running" == "true" ]] || {
     log "FAIL bot container is not running"
     return 1
   }
-  [[ "$wg_running" == "true" && "$wg_health" == "healthy" ]] || {
-    log "FAIL WireGuard container state: running=$wg_running health=$wg_health"
-    return 1
-  }
-
   [[ -n "$bot_started_at" ]] || {
     log "FAIL bot start time is unavailable"
     return 1
@@ -86,10 +77,19 @@ async def main():
             raise RuntimeError("Spotify response does not contain access_token")
         print("spotify_token=ok")
 
-        async with session.get("https://music.yandex.ru") as response:
-            if response.status >= 400:
-                raise RuntimeError(f"Yandex Music returned HTTP {response.status}")
-        print("yandex_https=ok")
+    from app.config import YANDEX_PROXY_URL
+    from app.sources import get_yandex_client, parse_yandex_music, search_yandex_music_tracks
+
+    if not YANDEX_PROXY_URL:
+        raise RuntimeError("Production Yandex proxy is missing")
+    await asyncio.to_thread(get_yandex_client)
+    results = await search_yandex_music_tracks("Daft Punk Get Lucky", limit=1)
+    if not results:
+        raise RuntimeError("Yandex API search returned no tracks")
+    candidate = results[0]["source_url"]
+    if not await parse_yandex_music(candidate):
+        raise RuntimeError("Yandex API track lookup failed")
+    print("yandex_api=ok")
 
     cache_path = Path(os.environ.get("CACHE_DB_PATH", "cache/music_cache.sqlite3"))
     if not cache_path.is_absolute():
@@ -115,7 +115,7 @@ PY
   for marker in \
     telegram_get_me=ok \
     spotify_token=ok \
-    yandex_https=ok \
+    yandex_api=ok \
     sqlite_quick_check=ok; do
     grep -qx "$marker" <<<"$api_output" || {
       log "FAIL missing smoke marker: $marker"
@@ -123,14 +123,8 @@ PY
     }
   done
 
-  docker exec "$WG_CONTAINER_NAME" wg show wg0 >/dev/null
-  handshake_output="$(docker exec "$WG_CONTAINER_NAME" wg show wg0 latest-handshakes)"
-  awk '$2 > 0 { found=1 } END { exit !found }' <<<"$handshake_output" || {
-    log "FAIL WireGuard has no completed handshake"
-    return 1
-  }
+  log "OK polling, Telegram, Spotify, Yandex API through RU proxy and SQLite smoke passed"
 
-  log "OK polling, Telegram, Spotify, Yandex, SQLite and WireGuard smoke passed"
 }
 
 case "$SMOKE_ATTEMPTS" in

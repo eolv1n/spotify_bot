@@ -64,6 +64,8 @@ SPOTIFY_CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
 AUTO_DELETE_DELAY = _parse_auto_delete_delay(os.getenv("AUTO_DELETE_DELAY", "0"))
 CACHE_DB_PATH = os.getenv("CACHE_DB_PATH", "cache/music_cache.sqlite3")
 CACHE_TTL_SECONDS = _parse_cache_ttl(os.getenv("CACHE_TTL_SECONDS", "43200"))
+# Only the Yandex client receives this proxy; other services stay direct.
+YANDEX_PROXY_URL = os.getenv("YANDEX_PROXY_URL", "").strip() or None
 
 if not TELEGRAM_TOKEN or not SPOTIFY_CLIENT_ID or not SPOTIFY_CLIENT_SECRET:
     raise ValueError("❌ Не найдены необходимые переменные окружения! Проверь .env файл.")

@@ -33,7 +33,7 @@ case "${1:-}" in
       printf '%s\n' \
         telegram_get_me=ok \
         spotify_token=ok \
-        yandex_https=ok \
+        yandex_api=ok \
         sqlite_quick_check=ok
     elif [[ "$*" == *'latest-handshakes'* ]]; then
       echo 'public-key 1785840000'
