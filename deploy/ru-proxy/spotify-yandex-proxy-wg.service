@@ -1,0 +1,25 @@
+[Unit]
+Description=Spotify Bot Yandex HTTP proxy over Baloonz WireGuard
+Requires=wg-quick@bzovhwg0.service
+After=network-online.target wg-quick@bzovhwg0.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+DynamicUser=yes
+ExecStart=/opt/baloonz-gost/gost -L http://10.243.95.1:21081
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+MemoryMax=64M
+CPUQuota=25%
+
+[Install]
+WantedBy=multi-user.target
