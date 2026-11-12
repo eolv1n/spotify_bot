@@ -120,7 +120,7 @@ jobs:
           retention-days: 1
       - name: Wait for operator's SSH window
         env:
-          DEPLOY_HOST: ${{ secrets.SERVER_HOST }}
+          DEPLOY_HOST: 57.129.152.73
         run: |
           for attempt in $(seq 1 90); do
             if timeout 3 bash -c 'echo > /dev/tcp/$DEPLOY_HOST/22' 2>/dev/null; then exit 0; fi
@@ -135,8 +135,8 @@ jobs:
           SPOTIFY_CLIENT_ID: ${{ secrets.SPOTIFY_CLIENT_ID }}
           SPOTIFY_CLIENT_SECRET: ${{ secrets.SPOTIFY_CLIENT_SECRET }}
         with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
+          host: 57.129.152.73
+          username: ubuntu
           key: ${{ secrets.SSH_KEY }}
           fingerprint: SHA256:Vh4m6kgsnecXVx9ixYb/QKmkMW6meYLPiv6Cr7X0WF8
           envs: TELEGRAM_TOKEN,SPOTIFY_CLIENT_ID,SPOTIFY_CLIENT_SECRET
