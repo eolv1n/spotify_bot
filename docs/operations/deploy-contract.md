@@ -46,6 +46,16 @@ UFW rule, восстановить прежний unit при его налич�
 
 ## Deploy и smoke
 
+OVH migration: deploy uses GitHub Actions secrets `TELEGRAM_TOKEN`,
+`SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET` to create the root-only runtime
+env and uses the RU proxy over `bzovhwg0`. The deploy account is `ubuntu`
+with sudo. The runner publishes its IPv4 address as a short-lived artifact;
+the operator must first restrict the existing public SSH rule, preserve the
+RU/WG management path, arm a persistent timed rollback, then allow only that
+runner address. Restore the original firewall baseline after the run.
+The old `scripts/actions_deploy.sh` is only for the old EU host and must not
+be used on OVH. Verify both proxy/API and VPN traffic after changes.
+
 ```bash
 cd /opt/spotify_bot
 export BOT_ENV_FILE=/opt/spotify_bot_runtime/bot.env

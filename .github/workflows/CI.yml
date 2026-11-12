@@ -105,29 +105,69 @@ jobs:
     needs: build-image
     if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.deploy
     steps:
+      - name: Publish deployment runner address
+        id: runner
+        run: |
+          ip=$(curl -4fsS --max-time 10 https://api.ipify.org)
+          IP="$ip" python3 -c 'import ipaddress, os; assert ipaddress.ip_address(os.environ["IP"]).version == 4'
+          printf '%s\n' "$ip" > runner-ip.txt
+          echo "ip=$ip" >> "$GITHUB_OUTPUT"
+      - name: Share address with operator
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: deploy-ip-${{ steps.runner.outputs.ip }}
+          path: runner-ip.txt
+          retention-days: 1
+      - name: Wait for operator's SSH window
+        env:
+          DEPLOY_HOST: ${{ secrets.SERVER_HOST }}
+        run: |
+          for attempt in $(seq 1 90); do
+            if timeout 3 bash -c 'echo > /dev/tcp/$DEPLOY_HOST/22' 2>/dev/null; then exit 0; fi
+            sleep 3
+          done
+          echo 'SSH window did not open in time' >&2
+          exit 1
       - name: Deploy to Debian VPS over SSH
         uses: appleboy/ssh-action@7eaf76671a0d7eec5d98ee897acda4f968735a17 # v1.2.0
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          SPOTIFY_CLIENT_ID: ${{ secrets.SPOTIFY_CLIENT_ID }}
+          SPOTIFY_CLIENT_SECRET: ${{ secrets.SPOTIFY_CLIENT_SECRET }}
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SSH_KEY }}
+          fingerprint: SHA256:Vh4m6kgsnecXVx9ixYb/QKmkMW6meYLPiv6Cr7X0WF8
+          envs: TELEGRAM_TOKEN,SPOTIFY_CLIENT_ID,SPOTIFY_CLIENT_SECRET
           script_stop: true
           script: |
-            export INSTALL_DIR=/opt/spotify_bot
-            export BOT_ENV_FILE=/opt/spotify_bot_runtime/bot.env
-            export BOT_CACHE_DIR=/opt/spotify_bot_runtime/cache
-            export EXPECTED_SHA=${{ github.sha }}
-
-            if [ ! -d "$INSTALL_DIR/.git" ]; then
-              git clone --branch main https://github.com/eolv1n/spotify_bot.git "$INSTALL_DIR"
+            set -eu
+            test -n "$TELEGRAM_TOKEN" && test -n "$SPOTIFY_CLIENT_ID" && test -n "$SPOTIFY_CLIENT_SECRET"
+            sudo install -d -m 700 /opt/spotify_bot_runtime
+            sudo install -d -m 700 -o 1000 -g 1000 /opt/spotify_bot_runtime/cache
+            if sudo test -f /opt/spotify_bot_runtime/bot.env; then
+              sudo cp -p /opt/spotify_bot_runtime/bot.env /opt/spotify_bot_runtime/bot.env.before-deploy
+            else
+              sudo rm -f /opt/spotify_bot_runtime/bot.env.before-deploy
             fi
-
-            cd "$INSTALL_DIR"
-            git fetch origin main
-            git checkout main
-            git pull --ff-only origin main
-            umask 077
-            mkdir -p "$BOT_CACHE_DIR"
-            test -f "$BOT_ENV_FILE" || { echo 'Provision runtime env on the host before deploy'; exit 1; }
-            chmod 600 "$BOT_ENV_FILE"
-            ./deploy.sh
+            printf 'TELEGRAM_TOKEN=%s\nSPOTIFY_CLIENT_ID=%s\nSPOTIFY_CLIENT_SECRET=%s\nAUTO_DELETE_DELAY=3\nCACHE_DB_PATH=cache/music_cache.sqlite3\nCACHE_TTL_SECONDS=43200\nYANDEX_PROXY_URL=http://10.243.95.1:21081\n' "$TELEGRAM_TOKEN" "$SPOTIFY_CLIENT_ID" "$SPOTIFY_CLIENT_SECRET" | sudo sh -c 'umask 077; cat > /opt/spotify_bot_runtime/bot.env.new; mv /opt/spotify_bot_runtime/bot.env.new /opt/spotify_bot_runtime/bot.env'
+            if ! sudo env EXPECTED_SHA='${{ github.sha }}' bash -eu -c '
+              if [ ! -d /opt/spotify_bot/.git ]; then
+                git clone --branch main https://github.com/eolv1n/spotify_bot.git /opt/spotify_bot
+              fi
+              cd /opt/spotify_bot
+              git fetch origin main
+              git checkout main
+              git pull --ff-only origin main
+              export BOT_ENV_FILE=/opt/spotify_bot_runtime/bot.env BOT_CACHE_DIR=/opt/spotify_bot_runtime/cache
+              ./deploy.sh
+            '; then
+              if sudo test -f /opt/spotify_bot_runtime/bot.env.before-deploy; then
+                sudo mv /opt/spotify_bot_runtime/bot.env.before-deploy /opt/spotify_bot_runtime/bot.env
+                sudo env BOT_ENV_FILE=/opt/spotify_bot_runtime/bot.env BOT_CACHE_DIR=/opt/spotify_bot_runtime/cache bash -c 'cd /opt/spotify_bot && export PROD_BOT_ENV_FILE="$BOT_ENV_FILE" PROD_BOT_CACHE_DIR="$BOT_CACHE_DIR"; docker compose up -d --force-recreate spotify_bot && ./scripts/prod_smoke.sh' || true
+              else
+                sudo docker stop spotify_bot >/dev/null 2>&1 || true
+              fi
+              exit 1
+            fi
