@@ -140,7 +140,6 @@ jobs:
           key: ${{ secrets.SSH_KEY }}
           fingerprint: SHA256:gHTpEqsFbV/JfXAexdyvahm9u0PiBGeaUCsS3brP6Bg
           envs: TELEGRAM_TOKEN,SPOTIFY_CLIENT_ID,SPOTIFY_CLIENT_SECRET
-          script_stop: true
           script: |
             set -eu
             test -n "$TELEGRAM_TOKEN" && test -n "$SPOTIFY_CLIENT_ID" && test -n "$SPOTIFY_CLIENT_SECRET"
