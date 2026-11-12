@@ -138,7 +138,7 @@ jobs:
           host: 57.129.152.73
           username: ubuntu
           key: ${{ secrets.SSH_KEY }}
-          fingerprint: SHA256:Vh4m6kgsnecXVx9ixYb/QKmkMW6meYLPiv6Cr7X0WF8
+          fingerprint: SHA256:gHTpEqsFbV/JfXAexdyvahm9u0PiBGeaUCsS3brP6Bg
           envs: TELEGRAM_TOKEN,SPOTIFY_CLIENT_ID,SPOTIFY_CLIENT_SECRET
           script_stop: true
           script: |
