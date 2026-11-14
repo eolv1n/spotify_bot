@@ -321,6 +321,19 @@ def test_extract_yandex_track_ref():
     assert extract_yandex_track_ref("https://example.com") is None
 
 
+@pytest.mark.asyncio
+async def test_yandex_kz_track_link_reaches_yandex_parser():
+    url = "https://music.yandex.kz/album/5152780/track/36202599?utm_source=web&utm_medium=copy_link"
+    payload = {"track": "Example"}
+    with patch("app.sources.get_cached_track", return_value=None), \
+            patch("app.sources.set_cached_track"), \
+            patch("app.sources.parse_yandex_music", new_callable=AsyncMock, return_value=payload) as parser:
+        assert await parse_music_url(url) == payload
+        parser.assert_awaited_once_with(url)
+    assert extract_yandex_track_ref(url) == "36202599:5152780"
+    assert not classify_music_url("https://music.yandex.kz.example.com/track/36202599")["supported"]
+
+
 def test_classify_music_url_recognizes_supported_track_links():
     assert classify_music_url("https://open.spotify.com/track/abc123") == {
         "service": "spotify",
