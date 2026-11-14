@@ -144,7 +144,7 @@ def classify_music_url(url: str) -> dict:
         if "artist" in path_parts:
             return {"service": "apple_music", "kind": "artist", "supported": False}
 
-    if host == "music.yandex.ru":
+    if host in {"music.yandex.ru", "music.yandex.kz"}:
         if "track" in path_parts:
             return {"service": "yandex_music", "kind": "track", "supported": True}
         if "album" in path_parts:
